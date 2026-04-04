@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
   getFirestore, collection, onSnapshot, addDoc, 
-  deleteDoc, doc, updateDoc, serverTimestamp, writeBatch 
+  deleteDoc, doc, updateDoc, setDoc, serverTimestamp, writeBatch 
 } from 'firebase/firestore';
 import { 
   PlusCircle, MinusCircle, Wallet, Trash2, Edit2, 
@@ -53,6 +53,7 @@ export default function App() {
 
   const [records, setRecords] = useState([]);
   const [partners, setPartners] = useState([]);
+  const [shopCapital, setShopCapital] = useState(0); // เก็บค่าทุนร้าน
   const [loading, setLoading] = useState(true);
   
   // Form State (Main Accounting)
@@ -128,10 +129,18 @@ export default function App() {
           return timeA - timeB;
       });
       setPartners(pData);
+    });
+
+    // ดึงข้อมูลทุนร้านตั้งต้น
+    const capitalRef = doc(db, 'accounting_settings', 'capital');
+    const unsubCapital = onSnapshot(capitalRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setShopCapital(docSnap.data().amount || 0);
+      }
       setLoading(false);
     });
 
-    return () => { unsubRecords(); unsubPartners(); };
+    return () => { unsubRecords(); unsubPartners(); unsubCapital(); };
   }, [user]);
 
   // === ระบบ Login Admin ===
@@ -311,6 +320,17 @@ export default function App() {
       await deleteDoc(doc(db, 'accounting_partners', partnerId));
   };
 
+  // อัปเดตทุนร้าน
+  const handleCapitalUpdate = async (value) => {
+    if (!isAdmin || !db) return;
+    const amount = Number(value) || 0;
+    try {
+      await setDoc(doc(db, 'accounting_settings', 'capital'), { amount });
+    } catch (e) {
+      console.error("Capital update error:", e);
+    }
+  };
+
   // ==========================================
   // 8. Render Data Computations
   // ==========================================
@@ -325,7 +345,10 @@ export default function App() {
     if (curr.type === 'expense') acc.expense += curr.amount;
     return acc;
   }, { income: 0, expense: 0 });
+  
   const balance = totals.income - totals.expense;
+  const totalPendingWages = partners.reduce((sum, p) => sum + (Number(p.pendingWage) || 0), 0);
+  const netProfitLoss = balance - Number(shopCapital || 0) - totalPendingWages;
 
   if (loading) return <div className="min-h-screen flex items-center justify-center font-sans text-gray-500 bg-gray-50">กำลังโหลดระบบบัญชี...</div>;
 
@@ -356,19 +379,50 @@ export default function App() {
 
       <div className="max-w-4xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6">
         
-        {/* Dashboard */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start">
-            <p className="text-sm text-gray-500 font-medium">รายรับรวม</p>
-            <p className="text-xl md:text-2xl font-bold text-green-600">฿{totals.income.toLocaleString()}</p>
+        {/* Dashboard - 6 Cards Layout */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500 flex flex-col justify-between">
+            <p className="text-xs md:text-sm text-gray-500 font-medium">รายรับรวม</p>
+            <p className="text-lg md:text-2xl font-bold text-green-600">฿{totals.income.toLocaleString()}</p>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start">
-            <p className="text-sm text-gray-500 font-medium">รายจ่ายรวม</p>
-            <p className="text-xl md:text-2xl font-bold text-red-600">฿{totals.expense.toLocaleString()}</p>
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-rose-500 flex flex-col justify-between">
+            <p className="text-xs md:text-sm text-gray-500 font-medium">รายจ่ายรวม</p>
+            <p className="text-lg md:text-2xl font-bold text-rose-600">฿{totals.expense.toLocaleString()}</p>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start">
-            <p className="text-sm text-gray-500 font-medium">คงเหลือสุทธิ</p>
-            <p className="text-xl md:text-2xl font-bold text-blue-600">฿{balance.toLocaleString()}</p>
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex flex-col justify-between col-span-2 md:col-span-1">
+            <p className="text-xs md:text-sm text-gray-500 font-medium">ยอดคงเหลือสุทธิ</p>
+            <p className="text-lg md:text-2xl font-bold text-blue-600">฿{balance.toLocaleString()}</p>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-purple-500 flex flex-col justify-between">
+            <p className="text-xs md:text-sm text-gray-500 font-medium">มูลค่าทุนร้าน</p>
+            <div className="flex items-center">
+              <span className="text-lg md:text-2xl font-bold text-purple-600 mr-1">฿</span>
+              {isAdmin ? (
+                <input 
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={shopCapital}
+                  onChange={(e) => setShopCapital(e.target.value === '' ? '' : Number(e.target.value))}
+                  onBlur={(e) => handleCapitalUpdate(e.target.value)}
+                  className="text-lg md:text-2xl font-bold text-purple-600 bg-transparent outline-none w-full border-b border-dashed border-gray-300 focus:border-purple-500"
+                  placeholder="0"
+                />
+              ) : (
+                <span className="text-lg md:text-2xl font-bold text-purple-600">{Number(shopCapital).toLocaleString()}</span>
+              )}
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-orange-500 flex flex-col justify-between">
+            <p className="text-xs md:text-sm text-gray-500 font-medium">ค่าแรงรอจ่ายรวม</p>
+            <p className="text-lg md:text-2xl font-bold text-orange-600">฿{totalPendingWages.toLocaleString()}</p>
+          </div>
+          <div className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${netProfitLoss >= 0 ? 'border-teal-500' : 'border-red-600'} flex flex-col justify-between col-span-2 md:col-span-1`}>
+            <p className="text-xs md:text-sm text-gray-500 font-medium">สถานะร้าน (กำไร/ขาดทุน)</p>
+            <p className={`text-lg md:text-2xl font-bold ${netProfitLoss >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
+              {netProfitLoss >= 0 ? '+' : ''}฿{netProfitLoss.toLocaleString()}
+            </p>
           </div>
         </div>
 
