@@ -7,7 +7,8 @@ import {
 } from 'firebase/firestore';
 import { 
   PlusCircle, MinusCircle, Wallet, Trash2, Edit2, 
-  X, Check, Filter, Users, UserPlus, Banknote, Settings 
+  X, Check, Filter, Users, UserPlus, Banknote, Settings,
+  LogIn, LogOut, Lock
 } from 'lucide-react';
 
 // ==========================================
@@ -35,15 +36,21 @@ try {
 }
 
 // ==========================================
-// 2. Google Sheet Webhook URL
+// 2. ตั้งค่าระบบ Security & Webhook
 // ==========================================
-const GOOGLE_SHEET_WEBHOOK_URL = "";
+// ใส่ลิงก์ Google Sheet Webhook ของคุณตรงนี้ (ใช้ลิงก์เดียวกับ Inventory ได้เลย)
+const GOOGLE_SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxMeGK6Bzv9FyIc6jlsMPWCtUqxyppxmD4eLTnUtkkrBHRFuwKluWsbOroYf_FF8Bae8A/exec";
+const ADMIN_PIN = "842019";
 
 // ==========================================
 // 3. Main Component
 // ==========================================
 export default function App() {
   const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem('accounting_admin') === 'true');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+
   const [records, setRecords] = useState([]);
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -115,7 +122,6 @@ export default function App() {
     const unsubPartners = onSnapshot(partnersRef, (snapshot) => {
       const pData = [];
       snapshot.forEach(doc => pData.push({ id: doc.id, ...doc.data() }));
-      // เรียงตามเวลาสร้าง
       pData.sort((a, b) => {
           const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
           const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
@@ -128,19 +134,46 @@ export default function App() {
     return () => { unsubRecords(); unsubPartners(); };
   }, [user]);
 
+  // === ระบบ Login Admin ===
+  const handleLogin = (e) => {
+    e.preventDefault();
+    if (pinInput === ADMIN_PIN) {
+      setIsAdmin(true);
+      localStorage.setItem('accounting_admin', 'true');
+      setShowLoginModal(false);
+      setPinInput('');
+    } else {
+      alert("รหัส PIN ไม่ถูกต้อง");
+      setPinInput('');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAdmin(false);
+    localStorage.removeItem('accounting_admin');
+    setEditingId(null);
+  };
+
   // ==========================================
   // 5. Helper Functions
   // ==========================================
   const sendWebhook = (action, data) => {
     if (!GOOGLE_SHEET_WEBHOOK_URL) return;
+    
+    // กำหนดให้อันนี้ส่งไปที่ Sheet2 เสมอ
     fetch(GOOGLE_SHEET_WEBHOOK_URL, {
       method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, ...data, timestamp: new Date().toISOString() })
+      body: JSON.stringify({ 
+          action, 
+          ...data, 
+          targetSheet: 'Sheet2', // ระบุปลายทาง
+          timestamp: new Date().toISOString() 
+      })
     }).catch(err => console.error('Webhook error:', err));
   };
 
   const logAction = async (action, data) => {
-    if (!db) return;
+    if (!db || !isAdmin) return;
     try {
       await addDoc(collection(db, 'accounting_logs'), { action, data, timestamp: serverTimestamp() });
       sendWebhook(action, data);
@@ -161,7 +194,7 @@ export default function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user || !db) { alert('กำลังเชื่อมต่อฐานข้อมูล'); return; }
+    if (!user || !db || !isAdmin) { alert('คุณไม่มีสิทธิ์แก้ไขข้อมูล'); return; }
     if (!formData.amount || Number(formData.amount) <= 0) { alert('ระบุจำนวนเงินให้ถูกต้อง'); return; }
     if (!formData.category) { alert('กรุณาเลือกหมวดหมู่'); return; }
     if (!formData.date) { alert('กรุณาระบุวันที่'); return; }
@@ -183,6 +216,7 @@ export default function App() {
   };
 
   const handleEdit = (record) => {
+    if(!isAdmin) return;
     setEditingId(record.id);
     setFormData({ type: record.type, amount: record.amount.toString(), category: record.category, date: record.date, note: record.note || '' });
     const formElement = document.getElementById('record-form');
@@ -190,7 +224,7 @@ export default function App() {
   };
 
   const handleDelete = async (id, recordData) => {
-    if (!user || !db) return;
+    if (!user || !db || !isAdmin) return;
     if (!window.confirm("ต้องการลบรายการนี้ใช่หรือไม่?")) return;
     try {
       await deleteDoc(doc(db, 'accounting_records', id));
@@ -198,12 +232,17 @@ export default function App() {
     } catch (err) { alert("เกิดข้อผิดพลาด: " + err.message); }
   };
 
+  const cancelEdit = () => {
+    setEditingId(null);
+    setFormData({ type: 'income', amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
+  };
+
   // ==========================================
   // 7. Partner / Wage Handlers
   // ==========================================
   const handlePartnerSubmit = async (e) => {
     e.preventDefault();
-    if (!user || !db) return;
+    if (!user || !db || !isAdmin) return;
     const { mode, data, value } = partnerModal;
     
     try {
@@ -211,7 +250,7 @@ export default function App() {
             if (!value.trim()) return alert('กรุณาระบุชื่อ');
             await addDoc(collection(db, 'accounting_partners'), {
                 name: value.trim(),
-                pendingWage: 0, // ยอดตั้งต้น
+                pendingWage: 0,
                 createdAt: serverTimestamp()
             });
         } else if (mode === 'setWage') {
@@ -228,7 +267,7 @@ export default function App() {
   };
 
   const handlePayWage = async (partner) => {
-      if (!user || !db) return;
+      if (!user || !db || !isAdmin) return;
       if (!partner.pendingWage || partner.pendingWage <= 0) {
           alert(`ไม่มียอดรอจ่ายสำหรับ ${partner.name}`);
           return;
@@ -238,7 +277,7 @@ export default function App() {
       try {
           const batch = writeBatch(db);
           
-          // 1. สร้างรายการรายจ่ายในบัญชีหลัก
+          // 1. สร้างรายการรายจ่าย
           const recordRef = doc(collection(db, 'accounting_records'));
           const recordPayload = {
               type: 'expense',
@@ -251,7 +290,7 @@ export default function App() {
           };
           batch.set(recordRef, recordPayload);
 
-          // 2. รีเซ็ตยอดรอจ่ายของพาร์ทเนอร์เป็น 0
+          // 2. รีเซ็ตยอดรอจ่าย
           const partnerRef = doc(db, 'accounting_partners', partner.id);
           batch.update(partnerRef, { pendingWage: 0 });
 
@@ -267,6 +306,7 @@ export default function App() {
   };
 
   const handleDeletePartner = async (partnerId) => {
+      if(!isAdmin) return;
       if(!window.confirm("คุณต้องการลบรายชื่อหุ้นส่วนนี้ออกจากระบบใช่หรือไม่? (ประวัติบัญชีจะยังอยู่)")) return;
       await deleteDoc(doc(db, 'accounting_partners', partnerId));
   };
@@ -293,14 +333,30 @@ export default function App() {
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
       {/* Header */}
       <div className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-20">
-        <h1 className="text-lg md:text-xl font-bold flex items-center gap-2 max-w-4xl mx-auto">
-          <Wallet className="w-6 h-6" /> ระบบบัญชี (Accounting)
-        </h1>
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <h1 className="text-lg md:text-xl font-bold flex items-center gap-2">
+            <Wallet className="w-6 h-6" /> ระบบบัญชี
+            {!isAdmin && <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">โหมดผู้เยี่ยมชม</span>}
+            {isAdmin && <span className="bg-green-400 text-white text-xs px-2 py-0.5 rounded-full font-medium shadow-sm">โหมดแอดมิน</span>}
+          </h1>
+          
+          <div className="w-full sm:w-auto flex justify-end">
+            {!isAdmin ? (
+              <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1.5 bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded-lg text-sm font-medium transition shadow-sm">
+                 <Lock size={14} /> เข้าระบบแก้ไข
+              </button>
+            ) : (
+              <button onClick={handleLogout} className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white border border-white/30 px-3 py-1.5 rounded-lg text-sm font-medium transition">
+                 <LogOut size={14} /> ออกจากระบบ
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="max-w-4xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6">
         
-        {/* Dashboard - Responsive Grid */}
+        {/* Dashboard */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500 flex sm:flex-col justify-between sm:justify-start items-center sm:items-start">
             <p className="text-sm text-gray-500 font-medium">รายรับรวม</p>
@@ -322,28 +378,31 @@ export default function App() {
               <h2 className="text-base md:text-lg font-semibold text-gray-800 flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-500" /> จัดการค่าแรง / หุ้นส่วน
               </h2>
-              <button 
-                onClick={() => setPartnerModal({ isOpen: true, mode: 'add', data: null, value: '' })}
-                className="flex items-center gap-1.5 text-sm bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition w-full sm:w-auto justify-center"
-              >
-                <UserPlus className="w-4 h-4" /> เพิ่มรายชื่อ
-              </button>
+              {isAdmin && (
+                <button 
+                  onClick={() => setPartnerModal({ isOpen: true, mode: 'add', data: null, value: '' })}
+                  className="flex items-center gap-1.5 text-sm bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition w-full sm:w-auto justify-center"
+                >
+                  <UserPlus className="w-4 h-4" /> เพิ่มรายชื่อ
+                </button>
+              )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
             {partners.length === 0 ? (
-               <div className="col-span-full p-6 text-center text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">ยังไม่มีรายชื่อ กด "เพิ่มรายชื่อ" ด้านบน</div>
+               <div className="col-span-full p-6 text-center text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">ยังไม่มีรายชื่อ</div>
             ) : (
               partners.map((partner) => (
                 <div key={partner.id} className="border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow bg-white relative group">
-                  {/* ปุ่มลบ */}
-                  <button 
-                     onClick={() => handleDeletePartner(partner.id)} 
-                     className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition-colors p-1"
-                     title="ลบรายชื่อนี้"
-                  >
-                     <X className="w-4 h-4" />
-                  </button>
+                  {isAdmin && (
+                    <button 
+                       onClick={() => handleDeletePartner(partner.id)} 
+                       className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition-colors p-1"
+                       title="ลบรายชื่อนี้"
+                    >
+                       <X className="w-4 h-4" />
+                    </button>
+                  )}
 
                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center shadow-inner mt-2">
                     <Users className="w-6 h-6 text-gray-500" />
@@ -355,112 +414,118 @@ export default function App() {
                       </span>
                   </div>
                   
-                  <div className="w-full flex flex-col gap-2 mt-1">
-                      <button 
-                        onClick={() => setPartnerModal({ isOpen: true, mode: 'setWage', data: partner, value: partner.pendingWage || '' })}
-                        className="flex items-center justify-center gap-1.5 w-full bg-gray-50 text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100 transition"
-                      >
-                        <Settings className="w-3.5 h-3.5" /> ตั้งยอดค่าแรง
-                      </button>
-                      <button 
-                        onClick={() => handlePayWage(partner)}
-                        disabled={!partner.pendingWage || partner.pendingWage <= 0}
-                        className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Banknote className="w-4 h-4" /> จ่ายเงินตัดบัญชี
-                      </button>
-                  </div>
+                  {isAdmin && (
+                    <div className="w-full flex flex-col gap-2 mt-1">
+                        <button 
+                          onClick={() => setPartnerModal({ isOpen: true, mode: 'setWage', data: partner, value: partner.pendingWage || '' })}
+                          className="flex items-center justify-center gap-1.5 w-full bg-gray-50 text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100 transition"
+                        >
+                          <Settings className="w-3.5 h-3.5" /> ตั้งยอดค่าแรง
+                        </button>
+                        <button 
+                          onClick={() => handlePayWage(partner)}
+                          disabled={!partner.pendingWage || partner.pendingWage <= 0}
+                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Banknote className="w-4 h-4" /> จ่ายเงินตัดบัญชี
+                        </button>
+                    </div>
+                  )}
                 </div>
               ))
             )}
           </div>
         </div>
 
-        {/* Input Form */}
-        <div id="record-form" className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
-          <h2 className="text-base md:text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            {editingId ? <Edit2 className="w-5 h-5 text-yellow-500" /> : <PlusCircle className="w-5 h-5 text-blue-500" />}
-            {editingId ? 'แก้ไขรายการบัญชี' : 'บันทึกรายการบัญชีกองกลาง'}
-          </h2>
-          
-          <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
-            <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <button
-                type="button"
-                onClick={() => handleInputChange({ target: { name: 'type', value: 'income' } })}
-                className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'income' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-              >
-                <PlusCircle className="w-5 h-5" /> รายรับ
-              </button>
-              <button
-                type="button"
-                onClick={() => handleInputChange({ target: { name: 'type', value: 'expense' } })}
-                className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-              >
-                <MinusCircle className="w-5 h-5" /> รายจ่าย
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท)*</label>
-                <input 
-                  type="number" name="amount" min="0" step="any"
-                  value={formData.amount} onChange={handleInputChange}
-                  className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่*</label>
-                <select 
-                  name="category"
-                  value={formData.category} onChange={handleInputChange}
-                  className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
+        {/* Input Form (ซ่อนถ้าไม่ใช่ Admin) */}
+        {isAdmin && (
+          <div id="record-form" className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
+            <h2 className="text-base md:text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              {editingId ? <Edit2 className="w-5 h-5 text-yellow-500" /> : <PlusCircle className="w-5 h-5 text-blue-500" />}
+              {editingId ? 'แก้ไขรายการบัญชี' : 'บันทึกรายการบัญชีกองกลาง'}
+            </h2>
+            
+            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+              <div className="grid grid-cols-2 gap-3 md:gap-4">
+                <button
+                  type="button"
+                  onClick={() => handleInputChange({ target: { name: 'type', value: 'income' } })}
+                  className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'income' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                 >
-                  <option value="" disabled>-- เลือกหมวดหมู่ --</option>
-                  {categories[formData.type].map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">วันที่*</label>
-                <input 
-                  type="date" name="date"
-                  value={formData.date} onChange={handleInputChange}
-                  className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
-                <input 
-                  type="text" name="note"
-                  value={formData.note} onChange={handleInputChange}
-                  className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
-                  placeholder="ระบุเพิ่มเติม..."
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              <button 
-                type="submit" 
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition shadow-sm"
-              >
-                <Check className="w-5 h-5" /> {editingId ? 'บันทึกการแก้ไขบัญชี' : 'บันทึกลงบัญชี'}
-              </button>
-              {editingId && (
-                <button 
-                  type="button" onClick={cancelEdit}
-                  className="py-3 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex justify-center items-center transition"
-                >
-                  ยกเลิกการแก้ไข
+                  <PlusCircle className="w-5 h-5" /> รายรับ
                 </button>
-              )}
-            </div>
-          </form>
-        </div>
+                <button
+                  type="button"
+                  onClick={() => handleInputChange({ target: { name: 'type', value: 'expense' } })}
+                  className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                >
+                  <MinusCircle className="w-5 h-5" /> รายจ่าย
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท)*</label>
+                  <input 
+                    type="number" name="amount" min="0" step="any"
+                    value={formData.amount} onChange={handleInputChange}
+                    className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่*</label>
+                  <select 
+                    name="category"
+                    value={formData.category} onChange={handleInputChange}
+                    className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
+                  >
+                    <option value="" disabled>-- เลือกหมวดหมู่ --</option>
+                    {categories[formData.type].map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">วันที่*</label>
+                  {/* เพิ่มคำสั่งเปิด Calendar ทันทีที่คลิก */}
+                  <input 
+                    type="date" name="date"
+                    value={formData.date} onChange={handleInputChange}
+                    onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
+                    className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+                  <input 
+                    type="text" name="note"
+                    value={formData.note} onChange={handleInputChange}
+                    className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
+                    placeholder="ระบุเพิ่มเติม..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <button 
+                  type="submit" 
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition shadow-sm"
+                >
+                  <Check className="w-5 h-5" /> {editingId ? 'บันทึกการแก้ไขบัญชี' : 'บันทึกลงบัญชี'}
+                </button>
+                {editingId && (
+                  <button 
+                    type="button" onClick={cancelEdit}
+                    className="py-3 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex justify-center items-center transition"
+                  >
+                    ยกเลิกการแก้ไข
+                  </button>
+                )}
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row items-center gap-2 bg-white p-3 md:p-4 rounded-xl shadow-sm border border-gray-200">
@@ -472,6 +537,7 @@ export default function App() {
               type="month" 
               value={filterMonth} 
               onChange={(e) => setFilterMonth(e.target.value)}
+              onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
               className="p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500 w-full bg-white text-gray-900"
             />
             <select 
@@ -514,14 +580,16 @@ export default function App() {
                     <span className={`font-bold text-sm md:text-base ${record.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
                       {record.type === 'income' ? '+' : '-'}฿{record.amount.toLocaleString()}
                     </span>
-                    <div className="flex gap-1">
-                      <button onClick={() => handleEdit(record)} className="text-gray-400 hover:text-blue-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="แก้ไข">
-                        <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                      </button>
-                      <button onClick={() => handleDelete(record.id, record)} className="text-gray-400 hover:text-red-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="ลบ">
-                        <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                      </button>
-                    </div>
+                    {isAdmin && (
+                      <div className="flex gap-1">
+                        <button onClick={() => handleEdit(record)} className="text-gray-400 hover:text-blue-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="แก้ไข">
+                          <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                        </button>
+                        <button onClick={() => handleDelete(record.id, record)} className="text-gray-400 hover:text-red-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="ลบ">
+                          <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
@@ -531,7 +599,46 @@ export default function App() {
 
       </div>
 
-      {/* Modal สำหรับจัดการ หุ้นส่วน/ค่าแรง */}
+      {/* ==================================================== */}
+      {/* MODALS SECTION */}
+      {/* ==================================================== */}
+
+      {/* Modal Login */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center justify-center mb-6">
+              <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-3">
+                 <Lock size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800">เข้าสู่ระบบ Admin</h3>
+              <p className="text-sm text-gray-500 text-center mt-1">ใส่รหัส PIN เพื่อจัดการระบบบัญชี</p>
+            </div>
+            
+            <form onSubmit={handleLogin}>
+              <div className="mb-5">
+                <input 
+                  type="password" 
+                  pattern="[0-9]*" 
+                  inputMode="numeric"
+                  value={pinInput} 
+                  onChange={(e) => setPinInput(e.target.value)} 
+                  className="w-full p-3 text-center text-2xl tracking-[0.5em] border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900" 
+                  placeholder="••••••"
+                  autoFocus 
+                  required 
+                />
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { setShowLoginModal(false); setPinInput(''); }} className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-bold transition shadow-sm">ปลดล็อก</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal จัดการ หุ้นส่วน/ค่าแรง */}
       {partnerModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
@@ -553,7 +660,7 @@ export default function App() {
                     value={partnerModal.value}
                     onChange={(e) => setPartnerModal({...partnerModal, value: e.target.value})}
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900"
-                    placeholder={partnerModal.mode === 'add' ? 'นาย A' : '0.00'}
+                    placeholder={partnerModal.mode === 'add' ? 'ชื่อบุคคล' : '0.00'}
                     autoFocus
                   />
                   {partnerModal.mode === 'setWage' && (
