@@ -850,8 +850,8 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             
             {/* กล่องทำไก่/ขายไก่ */}
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-orange-200 bg-gradient-to-br from-white to-orange-50/30 transition-all duration-300">
-              <div className="flex justify-between items-center mb-3 border-b border-orange-100 pb-2">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-orange-200 bg-gradient-to-br from-white to-orange-50/30 transition-all duration-300 flex flex-col h-full">
+              <div className="flex justify-between items-center mb-3 border-b border-orange-100 pb-2 shrink-0">
                 <h2 className="text-sm md:text-base font-semibold text-orange-800 flex items-center gap-1.5">
                   <Calculator className="w-4 h-4" /> ค่าแรงยอดขาย (กล่อง)
                 </h2>
@@ -859,30 +859,32 @@ export default function App() {
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                   <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
-                   <input type="number" min="0" placeholder="จำนวนกล่อง" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
+              <div className="flex-1 flex flex-col">
+                <div className="space-y-3 mb-3">
+                  <div className="flex gap-2">
+                     <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
+                     <input type="number" min="0" placeholder="จำนวนกล่อง" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
+                  </div>
+                  <div className="flex gap-2">
+                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-2 min-h-[52px] border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                       <span className="flex items-center gap-1"><ChefHat className="w-3.5 h-3.5"/> ทำไก่</span>
+                       <span className="font-bold">{wageForm.prepPartners.length} คน</span>
+                     </button>
+                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-2 min-h-[52px] border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                       <span className="flex items-center gap-1"><ShoppingBag className="w-3.5 h-3.5"/> ขายไก่</span>
+                       <span className="font-bold">{wageForm.sellPartners.length} คน</span>
+                     </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                   <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-2 border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
-                     <span className="flex items-center gap-1"><ChefHat className="w-3.5 h-3.5"/> ทำไก่</span>
-                     <span className="font-bold">{wageForm.prepPartners.length} คน</span>
-                   </button>
-                   <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-2 border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
-                     <span className="flex items-center gap-1"><ShoppingBag className="w-3.5 h-3.5"/> ขายไก่</span>
-                     <span className="font-bold">{wageForm.sellPartners.length} คน</span>
-                   </button>
-                </div>
-                <button onClick={handleCalculateWages} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl text-sm active:scale-[0.98] transition-all duration-200 shadow-md">
+                <button onClick={handleCalculateWages} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl text-sm active:scale-[0.98] transition-all duration-200 shadow-md mt-auto">
                   คำนวณและแจกจ่าย
                 </button>
               </div>
             </div>
 
             {/* กล่องจัดส่ง */}
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-purple-200 bg-gradient-to-br from-white to-purple-50/30 transition-all duration-300">
-              <div className="flex justify-between items-center mb-3 border-b border-purple-100 pb-2">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-purple-200 bg-gradient-to-br from-white to-purple-50/30 transition-all duration-300 flex flex-col h-full">
+              <div className="flex justify-between items-center mb-3 border-b border-purple-100 pb-2 shrink-0">
                 <h2 className="text-sm md:text-base font-semibold text-purple-800 flex items-center gap-1.5">
                   <Truck className="w-4 h-4" /> ค่าแรงจัดส่ง (รอบ)
                 </h2>
@@ -890,16 +892,18 @@ export default function App() {
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                   <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
-                   <input type="number" min="0" placeholder="จำนวนรอบรวม" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
+              <div className="flex-1 flex flex-col">
+                <div className="space-y-3 mb-3">
+                  <div className="flex gap-2">
+                     <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
+                     <input type="number" min="0" placeholder="จำนวนรอบรวม" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
+                  </div>
+                  <button type="button" onClick={() => setDeliverySelectModal({ isOpen: true })} className={`w-full p-3 h-[52px] border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                    <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
+                    <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
+                  </button>
                 </div>
-                <button type="button" onClick={() => setDeliverySelectModal({ isOpen: true })} className={`w-full p-3 h-[52px] border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
-                  <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
-                  <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
-                </button>
-                <button onClick={handleCalculateDelivery} className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 rounded-xl text-sm active:scale-[0.98] transition-all duration-200 shadow-md">
+                <button onClick={handleCalculateDelivery} className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 rounded-xl text-sm active:scale-[0.98] transition-all duration-200 shadow-md mt-auto">
                   คำนวณและแจกจ่าย
                 </button>
               </div>
