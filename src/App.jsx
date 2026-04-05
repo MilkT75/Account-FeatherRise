@@ -8,7 +8,7 @@ import {
 import { 
   PlusCircle, MinusCircle, Wallet, Trash2, Edit2, 
   X, Check, Filter, Users, UserPlus, Banknote, Settings,
-  LogIn, LogOut, Lock
+  LogIn, LogOut, Lock, Calculator, ChefHat, ShoppingBag, History
 } from 'lucide-react';
 
 // ==========================================
@@ -38,7 +38,6 @@ try {
 // ==========================================
 // 2. ตั้งค่าระบบ Security & Webhook
 // ==========================================
-// ใส่ลิงก์ Google Sheet Webhook ของคุณตรงนี้ (ใช้ลิงก์เดียวกับ Inventory ได้เลย)
 const GOOGLE_SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxMeGK6Bzv9FyIc6jlsMPWCtUqxyppxmD4eLTnUtkkrBHRFuwKluWsbOroYf_FF8Bae8A/exec";
 const ADMIN_PIN = "842019";
 
@@ -53,10 +52,10 @@ export default function App() {
 
   const [records, setRecords] = useState([]);
   const [partners, setPartners] = useState([]);
-  const [shopCapital, setShopCapital] = useState(0); // เก็บค่าทุนร้าน
+  const [shopCapital, setShopCapital] = useState(0);
   const [loading, setLoading] = useState(true);
   
-  // Form State (Main Accounting)
+  // Main Accounting Form State
   const [formData, setFormData] = useState({
     type: 'income', amount: '', category: '',
     date: new Date().toISOString().split('T')[0], note: ''
@@ -67,8 +66,18 @@ export default function App() {
   const [filterMonth, setFilterMonth] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
 
-  // Partner Modal State
+  // Partner & Wage Calculation State
   const [partnerModal, setPartnerModal] = useState({ isOpen: false, mode: '', data: null, value: '' });
+  const [wageSettings, setWageSettings] = useState({ prepRate: 0, sellRate: 0 }); // เรทค่าแรงต่อกล่อง
+  const [wageHistory, setWageHistory] = useState([]); // ประวัติคำนวณค่าแรง
+  const [wageForm, setWageForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    boxes: '',
+    prepPartners: [], // เก็บ ID
+    sellPartners: []  // เก็บ ID
+  });
+  const [wageSettingsModal, setWageSettingsModal] = useState({ isOpen: false, prepRate: '', sellRate: '' });
+  const [partnerSelectModal, setPartnerSelectModal] = useState({ isOpen: false, type: '' }); // 'prep' | 'sell'
 
   // Categories
   const categories = {
@@ -103,9 +112,8 @@ export default function App() {
   useEffect(() => {
     if (!user || !db) return;
 
-    // ดึงข้อมูลบัญชี
-    const recordsRef = collection(db, 'accounting_records');
-    const unsubRecords = onSnapshot(recordsRef, (snapshot) => {
+    // 1. ดึงบัญชีหลัก
+    const unsubRecords = onSnapshot(collection(db, 'accounting_records'), (snapshot) => {
       const data = [];
       snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
       data.sort((a, b) => {
@@ -118,9 +126,8 @@ export default function App() {
       setRecords(data);
     });
 
-    // ดึงข้อมูลพาร์ทเนอร์/พนักงาน
-    const partnersRef = collection(db, 'accounting_partners');
-    const unsubPartners = onSnapshot(partnersRef, (snapshot) => {
+    // 2. ดึงหุ้นส่วน
+    const unsubPartners = onSnapshot(collection(db, 'accounting_partners'), (snapshot) => {
       const pData = [];
       snapshot.forEach(doc => pData.push({ id: doc.id, ...doc.data() }));
       pData.sort((a, b) => {
@@ -131,16 +138,33 @@ export default function App() {
       setPartners(pData);
     });
 
-    // ดึงข้อมูลทุนร้านตั้งต้น
-    const capitalRef = doc(db, 'accounting_settings', 'capital');
-    const unsubCapital = onSnapshot(capitalRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setShopCapital(docSnap.data().amount || 0);
-      }
+    // 3. ดึงทุนร้าน
+    const unsubCapital = onSnapshot(doc(db, 'accounting_settings', 'capital'), (docSnap) => {
+      if (docSnap.exists()) setShopCapital(docSnap.data().amount || 0);
+    });
+
+    // 4. ดึงเรทค่าแรง (ตั้งค่า)
+    const unsubWageRates = onSnapshot(doc(db, 'accounting_settings', 'wageRates'), (docSnap) => {
+      if (docSnap.exists()) setWageSettings(docSnap.data());
+      else setWageSettings({ prepRate: 0, sellRate: 0 }); // Default
+    });
+
+    // 5. ดึงประวัติคำนวณค่าแรงกล่อง
+    const unsubWageHistory = onSnapshot(collection(db, 'accounting_wage_logs'), (snapshot) => {
+      const wData = [];
+      snapshot.forEach(doc => wData.push({ id: doc.id, ...doc.data() }));
+      wData.sort((a, b) => {
+          const dateDiff = new Date(b.date) - new Date(a.date);
+          if (dateDiff !== 0) return dateDiff;
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+          return timeB - timeA;
+      });
+      setWageHistory(wData);
       setLoading(false);
     });
 
-    return () => { unsubRecords(); unsubPartners(); unsubCapital(); };
+    return () => { unsubRecords(); unsubPartners(); unsubCapital(); unsubWageRates(); unsubWageHistory(); };
   }, [user]);
 
   // === ระบบ Login Admin ===
@@ -168,16 +192,9 @@ export default function App() {
   // ==========================================
   const sendWebhook = (action, data) => {
     if (!GOOGLE_SHEET_WEBHOOK_URL) return;
-    
-    // กำหนดให้อันนี้ส่งไปที่ Sheet2 เสมอ
     fetch(GOOGLE_SHEET_WEBHOOK_URL, {
       method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-          action, 
-          ...data, 
-          targetSheet: 'Sheet2', // ระบุปลายทาง
-          timestamp: new Date().toISOString() 
-      })
+      body: JSON.stringify({ action, ...data, targetSheet: 'Sheet2', timestamp: new Date().toISOString() })
     }).catch(err => console.error('Webhook error:', err));
   };
 
@@ -190,7 +207,7 @@ export default function App() {
   };
 
   // ==========================================
-  // 6. Accounting Handlers
+  // 6. Accounting Handlers (บัญชีหลัก)
   // ==========================================
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -234,7 +251,7 @@ export default function App() {
 
   const handleDelete = async (id, recordData) => {
     if (!user || !db || !isAdmin) return;
-    if (!window.confirm("ต้องการลบรายการนี้ใช่หรือไม่?")) return;
+    if (!window.confirm("ต้องการลบรายการบัญชีนี้ใช่หรือไม่?")) return;
     try {
       await deleteDoc(doc(db, 'accounting_records', id));
       await logAction('DELETE', { id, ...recordData });
@@ -247,92 +264,155 @@ export default function App() {
   };
 
   // ==========================================
-  // 7. Partner / Wage Handlers
+  // 7. Partner / Wage Handlers (ระบบหุ้นส่วนพื้นฐาน)
   // ==========================================
   const handlePartnerSubmit = async (e) => {
     e.preventDefault();
     if (!user || !db || !isAdmin) return;
     const { mode, data, value } = partnerModal;
-    
     try {
         if (mode === 'add') {
             if (!value.trim()) return alert('กรุณาระบุชื่อ');
-            await addDoc(collection(db, 'accounting_partners'), {
-                name: value.trim(),
-                pendingWage: 0,
-                createdAt: serverTimestamp()
-            });
+            await addDoc(collection(db, 'accounting_partners'), { name: value.trim(), pendingWage: 0, createdAt: serverTimestamp() });
         } else if (mode === 'setWage') {
             const amount = Number(value);
             if (isNaN(amount) || amount < 0) return alert('จำนวนเงินไม่ถูกต้อง');
-            await updateDoc(doc(db, 'accounting_partners', data.id), {
-                pendingWage: amount
-            });
+            await updateDoc(doc(db, 'accounting_partners', data.id), { pendingWage: amount });
         }
         setPartnerModal({ isOpen: false, mode: '', data: null, value: '' });
-    } catch (err) {
-        alert("Error: " + err.message);
-    }
+    } catch (err) { alert("Error: " + err.message); }
   };
 
   const handlePayWage = async (partner) => {
       if (!user || !db || !isAdmin) return;
-      if (!partner.pendingWage || partner.pendingWage <= 0) {
-          alert(`ไม่มียอดรอจ่ายสำหรับ ${partner.name}`);
-          return;
-      }
-      if (!window.confirm(`ยืนยันการจ่ายค่าแรงให้ ${partner.name} จำนวน ฿${partner.pendingWage.toLocaleString()} ?\n(ระบบจะตัดเงินจากกองกลางและล้างยอดของคนนี้เป็น 0)`)) return;
+      if (!partner.pendingWage || partner.pendingWage <= 0) return alert(`ไม่มียอดรอจ่ายสำหรับ ${partner.name}`);
+      if (!window.confirm(`ยืนยันการจ่ายค่าแรงให้ ${partner.name} จำนวน ฿${partner.pendingWage.toLocaleString()} ?\n(ตัดเงินจากกองกลางและล้างยอดเป็น 0)`)) return;
 
       try {
           const batch = writeBatch(db);
-          
-          // 1. สร้างรายการรายจ่าย
+          // สร้างรายจ่าย
           const recordRef = doc(collection(db, 'accounting_records'));
-          const recordPayload = {
-              type: 'expense',
-              amount: partner.pendingWage,
-              category: 'ค่าแรง',
-              date: new Date().toISOString().split('T')[0],
-              note: `จ่ายค่าแรง: ${partner.name}`,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-          };
+          const recordPayload = { type: 'expense', amount: partner.pendingWage, category: 'ค่าแรง', date: new Date().toISOString().split('T')[0], note: `จ่ายค่าแรง: ${partner.name}`, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
           batch.set(recordRef, recordPayload);
-
-          // 2. รีเซ็ตยอดรอจ่าย
+          // รีเซ็ตยอดรอจ่าย
           const partnerRef = doc(db, 'accounting_partners', partner.id);
           batch.update(partnerRef, { pendingWage: 0 });
-
-          // 3. Commit
+          // บันทึก
           await batch.commit();
-
-          // 4. Log
           await logAction('CREATE_PAY_WAGE', { id: recordRef.id, ...recordPayload });
           alert(`จ่ายค่าแรงให้ ${partner.name} สำเร็จแล้ว`);
-      } catch (err) {
-          alert("เกิดข้อผิดพลาด: " + err.message);
-      }
+      } catch (err) { alert("เกิดข้อผิดพลาด: " + err.message); }
   };
 
   const handleDeletePartner = async (partnerId) => {
       if(!isAdmin) return;
-      if(!window.confirm("คุณต้องการลบรายชื่อหุ้นส่วนนี้ออกจากระบบใช่หรือไม่? (ประวัติบัญชีจะยังอยู่)")) return;
+      if(!window.confirm("คุณต้องการลบรายชื่อหุ้นส่วนนี้ออกจากระบบใช่หรือไม่?")) return;
       await deleteDoc(doc(db, 'accounting_partners', partnerId));
   };
 
-  // อัปเดตทุนร้าน
   const handleCapitalUpdate = async (value) => {
     if (!isAdmin || !db) return;
     const amount = Number(value) || 0;
-    try {
-      await setDoc(doc(db, 'accounting_settings', 'capital'), { amount });
-    } catch (e) {
-      console.error("Capital update error:", e);
-    }
+    try { await setDoc(doc(db, 'accounting_settings', 'capital'), { amount }); } catch (e) { console.error("Capital err:", e); }
   };
 
   // ==========================================
-  // 8. Render Data Computations
+  // 8. Advanced Wage Calculation (คำนวณตามกล่อง)
+  // ==========================================
+  const handleSaveWageSettings = async (e) => {
+    e.preventDefault();
+    if(!isAdmin || !db) return;
+    try {
+        await setDoc(doc(db, 'accounting_settings', 'wageRates'), {
+            prepRate: Number(wageSettingsModal.prepRate) || 0,
+            sellRate: Number(wageSettingsModal.sellRate) || 0
+        });
+        setWageSettingsModal({ isOpen: false, prepRate: '', sellRate: '' });
+    } catch (e) { alert('ตั้งค่าล้มเหลว: ' + e.message); }
+  };
+
+  const togglePartnerSelection = (partnerId, type) => {
+      setWageForm(prev => {
+          const list = prev[type === 'prep' ? 'prepPartners' : 'sellPartners'];
+          const newList = list.includes(partnerId) ? list.filter(id => id !== partnerId) : [...list, partnerId];
+          return { ...prev, [type === 'prep' ? 'prepPartners' : 'sellPartners']: newList };
+      });
+  };
+
+  const handleCalculateWages = async () => {
+      if (!user || !db || !isAdmin) return;
+      const boxes = Number(wageForm.boxes);
+      if (!boxes || boxes <= 0) return alert('กรุณาระบุจำนวนกล่องให้ถูกต้อง');
+      if (wageForm.prepPartners.length === 0 && wageForm.sellPartners.length === 0) return alert('กรุณาเลือกคนทำไก่ หรือ คนขายไก่ อย่างน้อย 1 คน');
+
+      const prepTotal = boxes * (wageSettings.prepRate || 0);
+      const sellTotal = boxes * (wageSettings.sellRate || 0);
+      const prepPerPerson = wageForm.prepPartners.length > 0 ? prepTotal / wageForm.prepPartners.length : 0;
+      const sellPerPerson = wageForm.sellPartners.length > 0 ? sellTotal / wageForm.sellPartners.length : 0;
+
+      if (!window.confirm(`ยืนยันการคำนวณและแจกจ่าย?\nทำไก่รวม: ฿${prepTotal} (${wageForm.prepPartners.length} คน)\nขายไก่รวม: ฿${sellTotal} (${wageForm.sellPartners.length} คน)`)) return;
+
+      try {
+          const batch = writeBatch(db);
+          const earningsMap = {}; // mapping id -> total earned
+          const prepNames = [];
+          const sellNames = [];
+
+          // รวบรวมยอดทำไก่
+          wageForm.prepPartners.forEach(id => {
+              earningsMap[id] = (earningsMap[id] || 0) + prepPerPerson;
+              const p = partners.find(x => x.id === id);
+              if(p) prepNames.push(p.name);
+          });
+          // รวบรวมยอดขายไก่
+          wageForm.sellPartners.forEach(id => {
+              earningsMap[id] = (earningsMap[id] || 0) + sellPerPerson;
+              const p = partners.find(x => x.id === id);
+              if(p) sellNames.push(p.name);
+          });
+
+          // บันทึกยอดอัปเดตใส่พาร์ทเนอร์
+          Object.keys(earningsMap).forEach(partnerId => {
+              const partner = partners.find(p => p.id === partnerId);
+              if (partner) {
+                  const newWage = (partner.pendingWage || 0) + earningsMap[partnerId];
+                  batch.update(doc(db, 'accounting_partners', partnerId), { pendingWage: newWage });
+              }
+          });
+
+          // บันทึกประวัติแยก
+          const logRef = doc(collection(db, 'accounting_wage_logs'));
+          batch.set(logRef, {
+              date: wageForm.date,
+              boxes,
+              prepRate: wageSettings.prepRate || 0,
+              sellRate: wageSettings.sellRate || 0,
+              prepTotal,
+              sellTotal,
+              prepNames, // เก็บชื่อไว้แสดงประวัติ
+              sellNames, // เก็บชื่อไว้แสดงประวัติ
+              createdAt: serverTimestamp()
+          });
+
+          await batch.commit();
+          
+          // รีเซ็ตฟอร์ม
+          setWageForm({ date: new Date().toISOString().split('T')[0], boxes: '', prepPartners: [], sellPartners: [] });
+          alert('คำนวณและเพิ่มยอดลงบัญชีหุ้นส่วนสำเร็จ');
+      } catch (err) {
+          alert('เกิดข้อผิดพลาด: ' + err.message);
+      }
+  };
+
+  const handleDeleteWageLog = async (logId) => {
+    if(!isAdmin) return;
+    if(!window.confirm("ต้องการลบประวัติการคำนวณนี้ใช่หรือไม่?\n(หมายเหตุ: ยอดที่แจกจ่ายไปแล้วจะไม่ถูกดึงกลับอัตโนมัติ คุณต้องไปลดยอดเอง)")) return;
+    await deleteDoc(doc(db, 'accounting_wage_logs', logId));
+  };
+
+
+  // ==========================================
+  // 9. Render Data Computations
   // ==========================================
   const filteredRecords = records.filter(record => {
     const matchMonth = filterMonth ? record.date.startsWith(filterMonth) : true;
@@ -400,9 +480,7 @@ export default function App() {
               <span className="text-lg md:text-2xl font-bold text-purple-600 mr-1">฿</span>
               {isAdmin ? (
                 <input 
-                  type="number"
-                  min="0"
-                  step="any"
+                  type="number" min="0" step="any"
                   value={shopCapital}
                   onChange={(e) => setShopCapital(e.target.value === '' ? '' : Number(e.target.value))}
                   onBlur={(e) => handleCapitalUpdate(e.target.value)}
@@ -491,7 +569,106 @@ export default function App() {
           </div>
         </div>
 
-        {/* Input Form (ซ่อนถ้าไม่ใช่ Admin) */}
+        {/* ========================================== */}
+        {/* ฟังก์ชันคำนวณค่าแรงจากกล่อง (แสดงเฉพาะ Admin) */}
+        {/* ========================================== */}
+        {isAdmin && (
+          <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-orange-200 animate-in fade-in bg-gradient-to-br from-white to-orange-50/30">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 border-b border-orange-100 pb-3 gap-2">
+              <h2 className="text-base md:text-lg font-semibold text-orange-800 flex items-center gap-2">
+                <Calculator className="w-5 h-5" /> คำนวณค่าแรงจากยอดขาย (กล่อง)
+              </h2>
+              <button 
+                onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate })}
+                className="text-orange-600 hover:text-orange-800 text-sm flex items-center gap-1 font-medium bg-orange-100 px-3 py-1.5 rounded-lg transition"
+              >
+                <Settings className="w-4 h-4" /> ตั้งค่าเรทค่าแรง
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">วันที่*</label>
+                <input 
+                  type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})}
+                  onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white"
+                />
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">ยอดขาย (จำนวนกล่อง)*</label>
+                <input 
+                  type="number" min="0" step="any" placeholder="0"
+                  value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white font-bold text-orange-600"
+                />
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
+                  <span>คนทำไก่</span>
+                  <span className="text-xs text-orange-500">(เรท ฿{wageSettings.prepRate}/กล่อง)</span>
+                </label>
+                <button 
+                  type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })}
+                  className={`w-full p-2.5 border rounded-lg flex items-center justify-between transition ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+                >
+                  <span className="flex items-center gap-1.5"><ChefHat className="w-4 h-4"/> เลือกพนักงาน</span>
+                  <span className="font-bold">{wageForm.prepPartners.length} คน</span>
+                </button>
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
+                  <span>คนขายไก่</span>
+                  <span className="text-xs text-orange-500">(เรท ฿{wageSettings.sellRate}/กล่อง)</span>
+                </label>
+                <button 
+                  type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })}
+                  className={`w-full p-2.5 border rounded-lg flex items-center justify-between transition ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+                >
+                  <span className="flex items-center gap-1.5"><ShoppingBag className="w-4 h-4"/> เลือกพนักงาน</span>
+                  <span className="font-bold">{wageForm.sellPartners.length} คน</span>
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button 
+                onClick={handleCalculateWages}
+                className="w-full md:w-auto bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 px-6 rounded-lg transition shadow-md flex items-center justify-center gap-2"
+              >
+                <Calculator className="w-5 h-5" /> คำนวณและแจกจ่ายค่าแรง
+              </button>
+            </div>
+
+            {/* แสดงประวัติการคำนวณ */}
+            {wageHistory.length > 0 && (
+              <div className="mt-6 border-t border-orange-100 pt-4">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1 mb-3"><History className="w-4 h-4"/> ประวัติการคำนวณค่าแรงย้อนหลัง</h3>
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                  {wageHistory.map(log => (
+                    <div key={log.id} className="bg-white border border-gray-100 rounded-lg p-3 text-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-2 hover:bg-orange-50/50 transition">
+                      <div>
+                        <span className="font-bold text-gray-800">{log.date}</span>
+                        <span className="mx-2 text-gray-300">|</span>
+                        <span className="text-orange-600 font-medium">ยอดขาย {log.boxes} กล่อง</span>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {log.prepNames?.length > 0 && <span><ChefHat className="w-3 h-3 inline mr-1 text-gray-400"/> ทำไก่: {log.prepNames.join(', ')} (รวม ฿{log.prepTotal})</span>}
+                          {log.prepNames?.length > 0 && log.sellNames?.length > 0 && <span className="mx-1 text-gray-300">|</span>}
+                          {log.sellNames?.length > 0 && <span><ShoppingBag className="w-3 h-3 inline mr-1 text-gray-400"/> ขายไก่: {log.sellNames.join(', ')} (รวม ฿{log.sellTotal})</span>}
+                        </div>
+                      </div>
+                      <button onClick={() => handleDeleteWageLog(log.id)} className="text-gray-400 hover:text-red-500 p-1 bg-gray-50 rounded md:ml-auto">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+
+        {/* Input Form บัญชีหลัก (ซ่อนถ้าไม่ใช่ Admin) */}
         {isAdmin && (
           <div id="record-form" className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
             <h2 className="text-base md:text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -501,18 +678,10 @@ export default function App() {
             
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
               <div className="grid grid-cols-2 gap-3 md:gap-4">
-                <button
-                  type="button"
-                  onClick={() => handleInputChange({ target: { name: 'type', value: 'income' } })}
-                  className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'income' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                >
+                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'income' } })} className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'income' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                   <PlusCircle className="w-5 h-5" /> รายรับ
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleInputChange({ target: { name: 'type', value: 'expense' } })}
-                  className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                >
+                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'expense' } })} className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                   <MinusCircle className="w-5 h-5" /> รายจ่าย
                 </button>
               </div>
@@ -520,61 +689,31 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท)*</label>
-                  <input 
-                    type="number" name="amount" min="0" step="any"
-                    value={formData.amount} onChange={handleInputChange}
-                    className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
-                    placeholder="0.00"
-                  />
+                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm" placeholder="0.00" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่*</label>
-                  <select 
-                    name="category"
-                    value={formData.category} onChange={handleInputChange}
-                    className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
-                  >
+                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm">
                     <option value="" disabled>-- เลือกหมวดหมู่ --</option>
-                    {categories[formData.type].map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
+                    {categories[formData.type].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">วันที่*</label>
-                  {/* เพิ่มคำสั่งเปิด Calendar ทันทีที่คลิก */}
-                  <input 
-                    type="date" name="date"
-                    value={formData.date} onChange={handleInputChange}
-                    onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                    className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
-                  />
+                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
-                  <input 
-                    type="text" name="note"
-                    value={formData.note} onChange={handleInputChange}
-                    className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm"
-                    placeholder="ระบุเพิ่มเติม..."
-                  />
+                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm" placeholder="ระบุเพิ่มเติม..." />
                 </div>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <button 
-                  type="submit" 
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition shadow-sm"
-                >
+                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition shadow-sm">
                   <Check className="w-5 h-5" /> {editingId ? 'บันทึกการแก้ไขบัญชี' : 'บันทึกลงบัญชี'}
                 </button>
                 {editingId && (
-                  <button 
-                    type="button" onClick={cancelEdit}
-                    className="py-3 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex justify-center items-center transition"
-                  >
-                    ยกเลิกการแก้ไข
-                  </button>
+                  <button type="button" onClick={cancelEdit} className="py-3 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex justify-center items-center transition">ยกเลิกการแก้ไข</button>
                 )}
               </div>
             </form>
@@ -672,15 +811,10 @@ export default function App() {
             <form onSubmit={handleLogin}>
               <div className="mb-5">
                 <input 
-                  type="password" 
-                  pattern="[0-9]*" 
-                  inputMode="numeric"
-                  value={pinInput} 
-                  onChange={(e) => setPinInput(e.target.value)} 
+                  type="password" pattern="[0-9]*" inputMode="numeric"
+                  value={pinInput} onChange={(e) => setPinInput(e.target.value)} 
                   className="w-full p-3 text-center text-2xl tracking-[0.5em] border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900" 
-                  placeholder="••••••"
-                  autoFocus 
-                  required 
+                  placeholder="••••••" autoFocus required 
                 />
               </div>
               <div className="flex gap-2">
@@ -692,15 +826,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal จัดการ หุ้นส่วน/ค่าแรง */}
+      {/* Modal จัดการ หุ้นส่วนพื้นฐาน */}
       {partnerModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800 border-b pb-3">
               {partnerModal.mode === 'add' ? <UserPlus className="text-blue-500" /> : <Settings className="text-blue-500" />}
-              {partnerModal.mode === 'add' ? 'เพิ่มรายชื่อหุ้นส่วน/พนักงาน' : `ตั้งยอดค่าแรง: ${partnerModal.data?.name}`}
+              {partnerModal.mode === 'add' ? 'เพิ่มรายชื่อหุ้นส่วน' : `ตั้งยอดค่าแรง: ${partnerModal.data?.name}`}
             </h3>
-            
             <form onSubmit={handlePartnerSubmit}>
               <div className="space-y-4">
                 <div>
@@ -709,35 +842,91 @@ export default function App() {
                   </label>
                   <input 
                     type={partnerModal.mode === 'add' ? 'text' : 'number'}
-                    step={partnerModal.mode === 'add' ? undefined : 'any'}
-                    min="0"
-                    value={partnerModal.value}
-                    onChange={(e) => setPartnerModal({...partnerModal, value: e.target.value})}
+                    step={partnerModal.mode === 'add' ? undefined : 'any'} min="0"
+                    value={partnerModal.value} onChange={(e) => setPartnerModal({...partnerModal, value: e.target.value})}
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900"
-                    placeholder={partnerModal.mode === 'add' ? 'ชื่อบุคคล' : '0.00'}
-                    autoFocus
+                    placeholder={partnerModal.mode === 'add' ? 'ชื่อบุคคล' : '0.00'} autoFocus
                   />
-                  {partnerModal.mode === 'setWage' && (
-                    <p className="text-xs text-orange-600 mt-2">* ยอดนี้คือ "ยอดรอจ่าย" ยังไม่ถูกหักออกจากบัญชีกองกลางจนกว่าจะกดปุ่ม "จ่ายเงิน"</p>
-                  )}
                 </div>
               </div>
               <div className="flex gap-2 mt-6 pt-2">
-                <button 
-                  type="button" 
-                  onClick={() => setPartnerModal({ isOpen: false, mode: '', data: null, value: '' })}
-                  className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition"
-                >
-                  ยกเลิก
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-1 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-bold transition shadow-sm"
-                >
-                  บันทึก
-                </button>
+                <button type="button" onClick={() => setPartnerModal({ isOpen: false, mode: '', data: null, value: '' })} className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-bold transition shadow-sm">บันทึก</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal ตั้งค่าเรทค่าแรง */}
+      {wageSettingsModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800 border-b pb-3">
+              <Settings className="text-orange-500" /> ตั้งค่าเรทค่าแรง (ต่อกล่อง)
+            </h3>
+            <form onSubmit={handleSaveWageSettings}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ค่าแรงทำไก่ (บาท/กล่อง)</label>
+                  <input type="number" step="any" min="0" required
+                    value={wageSettingsModal.prepRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, prepRate: e.target.value})}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900"
+                    placeholder="0.00" autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ค่าแรงขายไก่ (บาท/กล่อง)</label>
+                  <input type="number" step="any" min="0" required
+                    value={wageSettingsModal.sellRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, sellRate: e.target.value})}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-6 pt-2">
+                <button type="button" onClick={() => setWageSettingsModal({ isOpen: false, prepRate: '', sellRate: '' })} className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-2.5 text-white bg-orange-600 hover:bg-orange-700 rounded-lg text-sm font-bold transition shadow-sm">บันทึกตั้งค่า</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal เลือกคนทำงาน */}
+      {partnerSelectModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800 border-b pb-3 shrink-0">
+              {partnerSelectModal.type === 'prep' ? <ChefHat className="text-orange-500" /> : <ShoppingBag className="text-orange-500" />}
+              เลือกคน{partnerSelectModal.type === 'prep' ? 'ทำไก่' : 'ขายไก่'}
+            </h3>
+            
+            <div className="overflow-y-auto flex-1 space-y-2 pr-2 mb-4">
+              {partners.length === 0 ? <p className="text-center text-sm text-gray-400 py-4">ยังไม่มีรายชื่อพนักงาน</p> : null}
+              {partners.map(p => {
+                 const isSelected = wageForm[partnerSelectModal.type === 'prep' ? 'prepPartners' : 'sellPartners'].includes(p.id);
+                 return (
+                   <label key={p.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                      <input 
+                        type="checkbox" 
+                        checked={isSelected}
+                        onChange={() => togglePartnerSelection(p.id, partnerSelectModal.type)}
+                        className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 cursor-pointer"
+                      />
+                      <span className={`font-medium ${isSelected ? 'text-orange-800' : 'text-gray-700'}`}>{p.name}</span>
+                   </label>
+                 );
+              })}
+            </div>
+            
+            <button 
+              type="button" 
+              onClick={() => setPartnerSelectModal({ isOpen: false, type: '' })} 
+              className="w-full py-3 text-white bg-gray-800 hover:bg-black rounded-lg text-sm font-bold transition shadow-sm shrink-0"
+            >
+              ตกลง
+            </button>
           </div>
         </div>
       )}
