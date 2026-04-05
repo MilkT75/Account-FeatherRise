@@ -8,7 +8,8 @@ import {
 import { 
   PlusCircle, MinusCircle, Wallet, Trash2, Edit2, 
   X, Check, Filter, Users, UserPlus, Banknote, Settings,
-  LogIn, LogOut, Lock, Calculator, ChefHat, ShoppingBag, History
+  LogOut, Lock, Calculator, ChefHat, ShoppingBag, History,
+  Undo, Redo, ChevronDown, ChevronUp, Info, Truck
 } from 'lucide-react';
 
 // ==========================================
@@ -55,6 +56,14 @@ export default function App() {
   const [shopCapital, setShopCapital] = useState(0);
   const [loading, setLoading] = useState(true);
   
+  // Undo / Redo Stacks
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+
+  // UI Collapse States
+  const [isMainHistoryOpen, setIsMainHistoryOpen] = useState(true);
+  const [isWageHistoryOpen, setIsWageHistoryOpen] = useState(true);
+
   // Main Accounting Form State
   const [formData, setFormData] = useState({
     type: 'income', amount: '', category: '',
@@ -68,21 +77,34 @@ export default function App() {
 
   // Partner & Wage Calculation State
   const [partnerModal, setPartnerModal] = useState({ isOpen: false, mode: '', data: null, value: '' });
-  const [wageSettings, setWageSettings] = useState({ prepRate: 0, sellRate: 0 }); // เรทค่าแรงต่อกล่อง
-  const [wageHistory, setWageHistory] = useState([]); // ประวัติคำนวณค่าแรง
+  const [partnerDetailsModal, setPartnerDetailsModal] = useState({ isOpen: false, partner: null });
+  
+  // Settings
+  const [wageSettings, setWageSettings] = useState({ prepRate: 0, sellRate: 0, deliveryRate: 0 });
+  const [wageSettingsModal, setWageSettingsModal] = useState({ isOpen: false, prepRate: '', sellRate: '', deliveryRate: '' });
+  const [wageHistory, setWageHistory] = useState([]); 
+  
+  // Box Wage Form
   const [wageForm, setWageForm] = useState({
     date: new Date().toISOString().split('T')[0],
     boxes: '',
-    prepPartners: [], // เก็บ ID
-    sellPartners: []  // เก็บ ID
+    prepPartners: [], 
+    sellPartners: []  
   });
-  const [wageSettingsModal, setWageSettingsModal] = useState({ isOpen: false, prepRate: '', sellRate: '' });
-  const [partnerSelectModal, setPartnerSelectModal] = useState({ isOpen: false, type: '' }); // 'prep' | 'sell'
+  const [partnerSelectModal, setPartnerSelectModal] = useState({ isOpen: false, type: '' });
+
+  // Delivery Wage Form
+  const [deliveryForm, setDeliveryForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    totalTrips: '',
+    tripsByPartner: {} // { partnerId: number_of_trips }
+  });
+  const [deliverySelectModal, setDeliverySelectModal] = useState(false);
 
   // Categories
   const categories = {
     income: ['ขายสินค้า', 'เงินปันผล', 'รายรับอื่นๆ'],
-    expense: ['ค่าแรง', 'ค่าวัตถุดิบ', 'ค่าเช่าที่', 'การตลาด', 'รายจ่ายอื่นๆ']
+    expense: ['ค่าแรง', 'ค่าจัดส่ง', 'ค่าวัตถุดิบ', 'ค่าเช่าที่', 'การตลาด', 'รายจ่ายอื่นๆ']
   };
 
   // ==========================================
@@ -112,7 +134,6 @@ export default function App() {
   useEffect(() => {
     if (!user || !db) return;
 
-    // 1. ดึงบัญชีหลัก
     const unsubRecords = onSnapshot(collection(db, 'accounting_records'), (snapshot) => {
       const data = [];
       snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
@@ -126,7 +147,6 @@ export default function App() {
       setRecords(data);
     });
 
-    // 2. ดึงหุ้นส่วน
     const unsubPartners = onSnapshot(collection(db, 'accounting_partners'), (snapshot) => {
       const pData = [];
       snapshot.forEach(doc => pData.push({ id: doc.id, ...doc.data() }));
@@ -138,18 +158,15 @@ export default function App() {
       setPartners(pData);
     });
 
-    // 3. ดึงทุนร้าน
     const unsubCapital = onSnapshot(doc(db, 'accounting_settings', 'capital'), (docSnap) => {
       if (docSnap.exists()) setShopCapital(docSnap.data().amount || 0);
     });
 
-    // 4. ดึงเรทค่าแรง (ตั้งค่า)
     const unsubWageRates = onSnapshot(doc(db, 'accounting_settings', 'wageRates'), (docSnap) => {
       if (docSnap.exists()) setWageSettings(docSnap.data());
-      else setWageSettings({ prepRate: 0, sellRate: 0 }); // Default
+      else setWageSettings({ prepRate: 0, sellRate: 0, deliveryRate: 0 });
     });
 
-    // 5. ดึงประวัติคำนวณค่าแรงกล่อง
     const unsubWageHistory = onSnapshot(collection(db, 'accounting_wage_logs'), (snapshot) => {
       const wData = [];
       snapshot.forEach(doc => wData.push({ id: doc.id, ...doc.data() }));
@@ -185,10 +202,12 @@ export default function App() {
     setIsAdmin(false);
     localStorage.removeItem('accounting_admin');
     setEditingId(null);
+    setUndoStack([]);
+    setRedoStack([]);
   };
 
   // ==========================================
-  // 5. Helper Functions
+  // 5. Helper & Undo/Redo Functions
   // ==========================================
   const sendWebhook = (action, data) => {
     if (!GOOGLE_SHEET_WEBHOOK_URL) return;
@@ -205,6 +224,51 @@ export default function App() {
       sendWebhook(action, data);
     } catch (e) { console.error("Log error:", e); }
   };
+
+  const recordAction = (actionParams) => {
+    if(!isAdmin) return;
+    setUndoStack(prev => [...prev, actionParams]);
+    setRedoStack([]);
+  };
+
+  const processUndoRedo = async (action, isUndo) => {
+    const batch = writeBatch(db);
+    
+    const applyToBatch = (item) => {
+        const ref = doc(db, item.col, item.docId);
+        const dataToApply = isUndo ? item.oldData : item.newData;
+        if (dataToApply === null) batch.delete(ref);
+        else batch.set(ref, dataToApply);
+    };
+
+    if (action.type === 'single') {
+        applyToBatch(action);
+    } else if (action.type === 'batch') {
+        action.items.forEach(applyToBatch);
+    }
+    await batch.commit();
+  };
+
+  const handleUndo = async () => {
+    if (undoStack.length === 0 || !user || !db || !isAdmin) return;
+    const action = undoStack[undoStack.length - 1];
+    try {
+        await processUndoRedo(action, true);
+        setUndoStack(prev => prev.slice(0, -1));
+        setRedoStack(prev => [...prev, action]);
+    } catch(err) { alert("Undo failed: "+err.message); }
+  };
+
+  const handleRedo = async () => {
+    if (redoStack.length === 0 || !user || !db || !isAdmin) return;
+    const action = redoStack[redoStack.length - 1];
+    try {
+        await processUndoRedo(action, false);
+        setRedoStack(prev => prev.slice(0, -1));
+        setUndoStack(prev => [...prev, action]);
+    } catch(err) { alert("Redo failed: "+err.message); }
+  };
+
 
   // ==========================================
   // 6. Accounting Handlers (บัญชีหลัก)
@@ -229,12 +293,15 @@ export default function App() {
 
     try {
       if (editingId) {
+        const oldRecord = records.find(r => r.id === editingId);
         await updateDoc(doc(db, 'accounting_records', editingId), payload);
+        recordAction({ type: 'single', col: 'accounting_records', docId: editingId, oldData: oldRecord, newData: payload });
         await logAction('UPDATE', { id: editingId, ...payload });
         setEditingId(null);
       } else {
         payload.createdAt = serverTimestamp();
         const docRef = await addDoc(collection(db, 'accounting_records'), payload);
+        recordAction({ type: 'single', col: 'accounting_records', docId: docRef.id, oldData: null, newData: payload });
         await logAction('CREATE', { id: docRef.id, ...payload });
       }
       setFormData({ type: formData.type, amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
@@ -254,6 +321,7 @@ export default function App() {
     if (!window.confirm("ต้องการลบรายการบัญชีนี้ใช่หรือไม่?")) return;
     try {
       await deleteDoc(doc(db, 'accounting_records', id));
+      recordAction({ type: 'single', col: 'accounting_records', docId: id, oldData: recordData, newData: null });
       await logAction('DELETE', { id, ...recordData });
     } catch (err) { alert("เกิดข้อผิดพลาด: " + err.message); }
   };
@@ -264,7 +332,7 @@ export default function App() {
   };
 
   // ==========================================
-  // 7. Partner / Wage Handlers (ระบบหุ้นส่วนพื้นฐาน)
+  // 7. Partner / Wage Handlers 
   // ==========================================
   const handlePartnerSubmit = async (e) => {
     e.preventDefault();
@@ -273,11 +341,14 @@ export default function App() {
     try {
         if (mode === 'add') {
             if (!value.trim()) return alert('กรุณาระบุชื่อ');
-            await addDoc(collection(db, 'accounting_partners'), { name: value.trim(), pendingWage: 0, createdAt: serverTimestamp() });
+            const payload = { name: value.trim(), pendingWage: 0, createdAt: serverTimestamp() };
+            const docRef = await addDoc(collection(db, 'accounting_partners'), payload);
+            recordAction({ type: 'single', col: 'accounting_partners', docId: docRef.id, oldData: null, newData: payload });
         } else if (mode === 'setWage') {
             const amount = Number(value);
             if (isNaN(amount) || amount < 0) return alert('จำนวนเงินไม่ถูกต้อง');
             await updateDoc(doc(db, 'accounting_partners', data.id), { pendingWage: amount });
+            recordAction({ type: 'single', col: 'accounting_partners', docId: data.id, oldData: data, newData: {...data, pendingWage: amount} });
         }
         setPartnerModal({ isOpen: false, mode: '', data: null, value: '' });
     } catch (err) { alert("Error: " + err.message); }
@@ -290,16 +361,19 @@ export default function App() {
 
       try {
           const batch = writeBatch(db);
-          // สร้างรายจ่าย
-          const recordRef = doc(collection(db, 'accounting_records'));
+          const newRecordRef = doc(collection(db, 'accounting_records'));
           const recordPayload = { type: 'expense', amount: partner.pendingWage, category: 'ค่าแรง', date: new Date().toISOString().split('T')[0], note: `จ่ายค่าแรง: ${partner.name}`, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-          batch.set(recordRef, recordPayload);
-          // รีเซ็ตยอดรอจ่าย
-          const partnerRef = doc(db, 'accounting_partners', partner.id);
-          batch.update(partnerRef, { pendingWage: 0 });
-          // บันทึก
+          
+          batch.set(newRecordRef, recordPayload);
+          batch.update(doc(db, 'accounting_partners', partner.id), { pendingWage: 0 });
           await batch.commit();
-          await logAction('CREATE_PAY_WAGE', { id: recordRef.id, ...recordPayload });
+
+          recordAction({ type: 'batch', items: [
+             { col: 'accounting_records', docId: newRecordRef.id, oldData: null, newData: recordPayload },
+             { col: 'accounting_partners', docId: partner.id, oldData: partner, newData: {...partner, pendingWage: 0} }
+          ]});
+
+          await logAction('CREATE_PAY_WAGE', { id: newRecordRef.id, ...recordPayload });
           alert(`จ่ายค่าแรงให้ ${partner.name} สำเร็จแล้ว`);
       } catch (err) { alert("เกิดข้อผิดพลาด: " + err.message); }
   };
@@ -307,7 +381,9 @@ export default function App() {
   const handleDeletePartner = async (partnerId) => {
       if(!isAdmin) return;
       if(!window.confirm("คุณต้องการลบรายชื่อหุ้นส่วนนี้ออกจากระบบใช่หรือไม่?")) return;
+      const oldData = partners.find(p => p.id === partnerId);
       await deleteDoc(doc(db, 'accounting_partners', partnerId));
+      recordAction({ type: 'single', col: 'accounting_partners', docId: partnerId, oldData: oldData, newData: null });
   };
 
   const handleCapitalUpdate = async (value) => {
@@ -317,7 +393,7 @@ export default function App() {
   };
 
   // ==========================================
-  // 8. Advanced Wage Calculation (คำนวณตามกล่อง)
+  // 8. Advanced Wage Calculation (ทำไก่/ขายไก่)
   // ==========================================
   const handleSaveWageSettings = async (e) => {
     e.preventDefault();
@@ -325,9 +401,10 @@ export default function App() {
     try {
         await setDoc(doc(db, 'accounting_settings', 'wageRates'), {
             prepRate: Number(wageSettingsModal.prepRate) || 0,
-            sellRate: Number(wageSettingsModal.sellRate) || 0
+            sellRate: Number(wageSettingsModal.sellRate) || 0,
+            deliveryRate: Number(wageSettingsModal.deliveryRate) || 0
         });
-        setWageSettingsModal({ isOpen: false, prepRate: '', sellRate: '' });
+        setWageSettingsModal({ isOpen: false, prepRate: '', sellRate: '', deliveryRate: '' });
     } catch (e) { alert('ตั้งค่าล้มเหลว: ' + e.message); }
   };
 
@@ -354,17 +431,17 @@ export default function App() {
 
       try {
           const batch = writeBatch(db);
-          const earningsMap = {}; // mapping id -> total earned
+          const earningsMap = {}; 
           const prepNames = [];
           const sellNames = [];
+          const undoItems = [];
 
-          // รวบรวมยอดทำไก่
+          // รวบรวมยอด
           wageForm.prepPartners.forEach(id => {
               earningsMap[id] = (earningsMap[id] || 0) + prepPerPerson;
               const p = partners.find(x => x.id === id);
               if(p) prepNames.push(p.name);
           });
-          // รวบรวมยอดขายไก่
           wageForm.sellPartners.forEach(id => {
               earningsMap[id] = (earningsMap[id] || 0) + sellPerPerson;
               const p = partners.find(x => x.id === id);
@@ -377,42 +454,114 @@ export default function App() {
               if (partner) {
                   const newWage = (partner.pendingWage || 0) + earningsMap[partnerId];
                   batch.update(doc(db, 'accounting_partners', partnerId), { pendingWage: newWage });
+                  undoItems.push({ col: 'accounting_partners', docId: partnerId, oldData: partner, newData: {...partner, pendingWage: newWage} });
               }
           });
 
-          // บันทึกประวัติแยก
+          // บันทึกประวัติ
           const logRef = doc(collection(db, 'accounting_wage_logs'));
-          batch.set(logRef, {
-              date: wageForm.date,
-              boxes,
-              prepRate: wageSettings.prepRate || 0,
-              sellRate: wageSettings.sellRate || 0,
-              prepTotal,
-              sellTotal,
-              prepNames, // เก็บชื่อไว้แสดงประวัติ
-              sellNames, // เก็บชื่อไว้แสดงประวัติ
-              createdAt: serverTimestamp()
-          });
+          const logData = {
+              logType: 'boxes', date: wageForm.date, boxes,
+              prepRate: wageSettings.prepRate || 0, sellRate: wageSettings.sellRate || 0,
+              prepTotal, sellTotal, prepNames, sellNames, createdAt: serverTimestamp()
+          };
+          batch.set(logRef, logData);
+          undoItems.push({ col: 'accounting_wage_logs', docId: logRef.id, oldData: null, newData: logData });
 
           await batch.commit();
+          recordAction({ type: 'batch', items: undoItems });
           
-          // รีเซ็ตฟอร์ม
           setWageForm({ date: new Date().toISOString().split('T')[0], boxes: '', prepPartners: [], sellPartners: [] });
           alert('คำนวณและเพิ่มยอดลงบัญชีหุ้นส่วนสำเร็จ');
-      } catch (err) {
-          alert('เกิดข้อผิดพลาด: ' + err.message);
-      }
+      } catch (err) { alert('เกิดข้อผิดพลาด: ' + err.message); }
   };
-
-  const handleDeleteWageLog = async (logId) => {
-    if(!isAdmin) return;
-    if(!window.confirm("ต้องการลบประวัติการคำนวณนี้ใช่หรือไม่?\n(หมายเหตุ: ยอดที่แจกจ่ายไปแล้วจะไม่ถูกดึงกลับอัตโนมัติ คุณต้องไปลดยอดเอง)")) return;
-    await deleteDoc(doc(db, 'accounting_wage_logs', logId));
-  };
-
 
   // ==========================================
-  // 9. Render Data Computations
+  // 9. Delivery Wage Calculation (คำนวณค่าจัดส่ง)
+  // ==========================================
+  const handleDeliveryTripChange = (partnerId, valueStr) => {
+     const value = parseInt(valueStr) || 0;
+     const totalTrips = Number(deliveryForm.totalTrips) || 0;
+     
+     // หาจำนวนรอบที่ถูกจ่ายไปแล้วให้คนอื่นๆ (ไม่รวมคนที่กำลังพิมพ์อยู่)
+     let sumOthers = 0;
+     Object.keys(deliveryForm.tripsByPartner).forEach(id => {
+         if (id !== partnerId) sumOthers += (deliveryForm.tripsByPartner[id] || 0);
+     });
+
+     // ล็อคไม่ให้ใส่เกินรอบรวม
+     if (sumOthers + value > totalTrips) {
+         return; // ไม่ให้อัปเดตค่าถ้ามันเกิน
+     }
+
+     setDeliveryForm(prev => ({
+         ...prev,
+         tripsByPartner: { ...prev.tripsByPartner, [partnerId]: value }
+     }));
+  };
+
+  const handleCalculateDelivery = async () => {
+     if (!user || !db || !isAdmin) return;
+     const totalTrips = Number(deliveryForm.totalTrips);
+     if (!totalTrips || totalTrips <= 0) return alert('กรุณาระบุรอบส่งรวมให้ถูกต้อง');
+     
+     const assignedTrips = Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b, 0);
+     if (assignedTrips !== totalTrips) return alert(`กระจายรอบส่งยังไม่ครบ (ขาดอีก ${totalTrips - assignedTrips} รอบ)`);
+
+     const rate = wageSettings.deliveryRate || 0;
+     const totalAmount = totalTrips * rate;
+
+     if (!window.confirm(`ยืนยันการคำนวณค่าส่ง?\nรวม ${totalTrips} รอบ (฿${totalAmount})`)) return;
+
+     try {
+         const batch = writeBatch(db);
+         const undoItems = [];
+         const deliveryNames = [];
+         const deliveryDetails = [];
+
+         Object.keys(deliveryForm.tripsByPartner).forEach(partnerId => {
+             const trips = deliveryForm.tripsByPartner[partnerId];
+             if (trips > 0) {
+                 const partner = partners.find(p => p.id === partnerId);
+                 if (partner) {
+                     const earned = trips * rate;
+                     const newWage = (partner.pendingWage || 0) + earned;
+                     
+                     batch.update(doc(db, 'accounting_partners', partnerId), { pendingWage: newWage });
+                     undoItems.push({ col: 'accounting_partners', docId: partnerId, oldData: partner, newData: {...partner, pendingWage: newWage} });
+                     
+                     deliveryNames.push(partner.name);
+                     deliveryDetails.push({ name: partner.name, trips, amount: earned });
+                 }
+             }
+         });
+
+         const logRef = doc(collection(db, 'accounting_wage_logs'));
+         const logData = {
+             logType: 'delivery', date: deliveryForm.date, totalTrips, deliveryRate: rate,
+             totalAmount, deliveryNames, deliveryDetails, createdAt: serverTimestamp()
+         };
+         batch.set(logRef, logData);
+         undoItems.push({ col: 'accounting_wage_logs', docId: logRef.id, oldData: null, newData: logData });
+
+         await batch.commit();
+         recordAction({ type: 'batch', items: undoItems });
+
+         setDeliveryForm({ date: new Date().toISOString().split('T')[0], totalTrips: '', tripsByPartner: {} });
+         setDeliverySelectModal(false);
+         alert('บันทึกค่าจัดส่งสำเร็จ');
+     } catch (err) { alert('เกิดข้อผิดพลาด: ' + err.message); }
+  };
+
+  const handleDeleteWageLog = async (log) => {
+    if(!isAdmin) return;
+    if(!window.confirm("ต้องการลบประวัติการคำนวณนี้ใช่หรือไม่?\n(ยอดที่แจกจ่ายไปแล้วจะไม่ถูกดึงกลับอัตโนมัติ)")) return;
+    await deleteDoc(doc(db, 'accounting_wage_logs', log.id));
+    recordAction({ type: 'single', col: 'accounting_wage_logs', docId: log.id, oldData: log, newData: null });
+  };
+
+  // ==========================================
+  // 10. Computations & Render
   // ==========================================
   const filteredRecords = records.filter(record => {
     const matchMonth = filterMonth ? record.date.startsWith(filterMonth) : true;
@@ -430,6 +579,38 @@ export default function App() {
   const totalPendingWages = partners.reduce((sum, p) => sum + (Number(p.pendingWage) || 0), 0);
   const netProfitLoss = balance - Number(shopCapital || 0) - totalPendingWages;
 
+  // ฟังก์ชันดึงประวัติส่วนตัวของ Partner แต่ละคน
+  const getPartnerStatement = (partner) => {
+      let stmts = [];
+      // รายได้จาก wageHistory
+      wageHistory.forEach(log => {
+          if (log.logType === 'delivery') {
+              const d = log.deliveryDetails?.find(x => x.name === partner.name);
+              if (d) stmts.push({ date: log.date, text: `ค่าจัดส่ง (${d.trips} รอบ)`, amount: d.amount, isIncome: true, realDate: log.createdAt });
+          } else {
+              let amount = 0; let text = [];
+              if (log.prepNames?.includes(partner.name)) { amount += log.prepTotal / log.prepNames.length; text.push('ทำไก่'); }
+              if (log.sellNames?.includes(partner.name)) { amount += log.sellTotal / log.sellNames.length; text.push('ขายไก่'); }
+              if (amount > 0) stmts.push({ date: log.date, text: `ค่าแรง: ${text.join(' + ')} (ยอดขาย ${log.boxes} กล่อง)`, amount, isIncome: true, realDate: log.createdAt });
+          }
+      });
+      // รายจ่ายจากการเบิก (records)
+      records.forEach(r => {
+          if (r.note === `จ่ายค่าแรง: ${partner.name}` || r.note.includes(partner.name)) {
+              if (r.type === 'expense' && r.category === 'ค่าแรง') {
+                  stmts.push({ date: r.date, text: 'เบิกจ่ายค่าแรงแล้ว', amount: r.amount, isIncome: false, realDate: r.createdAt });
+              }
+          }
+      });
+      // เรียงจากใหม่ไปเก่า
+      stmts.sort((a,b) => {
+         const dA = a.realDate?.toMillis ? a.realDate.toMillis() : new Date(a.date).getTime();
+         const dB = b.realDate?.toMillis ? b.realDate.toMillis() : new Date(b.date).getTime();
+         return dB - dA;
+      });
+      return stmts;
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center font-sans text-gray-500 bg-gray-50">กำลังโหลดระบบบัญชี...</div>;
 
   return (
@@ -443,7 +624,17 @@ export default function App() {
             {isAdmin && <span className="bg-green-400 text-white text-xs px-2 py-0.5 rounded-full font-medium shadow-sm">โหมดแอดมิน</span>}
           </h1>
           
-          <div className="w-full sm:w-auto flex justify-end">
+          <div className="w-full sm:w-auto flex justify-end gap-2">
+            {isAdmin && (
+              <>
+                <button onClick={handleUndo} disabled={undoStack.length === 0} className={`p-1.5 md:p-2 rounded-md flex items-center transition ${undoStack.length > 0 ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-blue-500 text-blue-400 cursor-not-allowed'}`} title="ย้อนกลับ (Undo)">
+                  <Undo size={16} />
+                </button>
+                <button onClick={handleRedo} disabled={redoStack.length === 0} className={`p-1.5 md:p-2 rounded-md flex items-center transition mr-1 ${redoStack.length > 0 ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-blue-500 text-blue-400 cursor-not-allowed'}`} title="ทำซ้ำ (Redo)">
+                  <Redo size={16} />
+                </button>
+              </>
+            )}
             {!isAdmin ? (
               <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1.5 bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded-lg text-sm font-medium transition shadow-sm">
                  <Lock size={14} /> เข้าระบบแก้ไข
@@ -526,15 +717,14 @@ export default function App() {
             ) : (
               partners.map((partner) => (
                 <div key={partner.id} className="border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow bg-white relative group">
-                  {isAdmin && (
-                    <button 
-                       onClick={() => handleDeletePartner(partner.id)} 
-                       className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition-colors p-1"
-                       title="ลบรายชื่อนี้"
-                    >
-                       <X className="w-4 h-4" />
-                    </button>
-                  )}
+                  {/* ปุ่ม Info ตรวจสอบประวัติ */}
+                  <button 
+                     onClick={() => setPartnerDetailsModal({ isOpen: true, partner })} 
+                     className="absolute top-2 right-2 text-blue-300 hover:text-blue-600 transition-colors p-1"
+                     title="ดูรายละเอียดการได้เงิน"
+                  >
+                     <Info className="w-4 h-4" />
+                  </button>
 
                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center shadow-inner mt-2">
                     <Users className="w-6 h-6 text-gray-500" />
@@ -570,102 +760,138 @@ export default function App() {
         </div>
 
         {/* ========================================== */}
-        {/* ฟังก์ชันคำนวณค่าแรงจากกล่อง (แสดงเฉพาะ Admin) */}
+        {/* ฟังก์ชันคำนวณค่าแรงแบบแอดวานซ์ (แสดงเฉพาะ Admin) */}
         {/* ========================================== */}
         {isAdmin && (
-          <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-orange-200 animate-in fade-in bg-gradient-to-br from-white to-orange-50/30">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 border-b border-orange-100 pb-3 gap-2">
-              <h2 className="text-base md:text-lg font-semibold text-orange-800 flex items-center gap-2">
-                <Calculator className="w-5 h-5" /> คำนวณค่าแรงจากยอดขาย (กล่อง)
-              </h2>
-              <button 
-                onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate })}
-                className="text-orange-600 hover:text-orange-800 text-sm flex items-center gap-1 font-medium bg-orange-100 px-3 py-1.5 rounded-lg transition"
-              >
-                <Settings className="w-4 h-4" /> ตั้งค่าเรทค่าแรง
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">วันที่*</label>
-                <input 
-                  type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})}
-                  onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white"
-                />
-              </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">ยอดขาย (จำนวนกล่อง)*</label>
-                <input 
-                  type="number" min="0" step="any" placeholder="0"
-                  value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white font-bold text-orange-600"
-                />
-              </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
-                  <span>คนทำไก่</span>
-                  <span className="text-xs text-orange-500">(เรท ฿{wageSettings.prepRate}/กล่อง)</span>
-                </label>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            
+            {/* กล่องทำไก่/ขายไก่ */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-200 bg-gradient-to-br from-white to-orange-50/30">
+              <div className="flex justify-between items-center mb-3 border-b border-orange-100 pb-2">
+                <h2 className="text-sm md:text-base font-semibold text-orange-800 flex items-center gap-1.5">
+                  <Calculator className="w-4 h-4" /> ค่าแรงยอดขาย (กล่อง)
+                </h2>
                 <button 
-                  type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })}
-                  className={`w-full p-2.5 border rounded-lg flex items-center justify-between transition ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+                  onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })}
+                  className="text-orange-600 hover:text-orange-800 bg-orange-100 p-1.5 rounded transition" title="ตั้งค่าเรท"
                 >
-                  <span className="flex items-center gap-1.5"><ChefHat className="w-4 h-4"/> เลือกพนักงาน</span>
-                  <span className="font-bold">{wageForm.prepPartners.length} คน</span>
+                  <Settings className="w-4 h-4" />
                 </button>
               </div>
-              <div className="md:col-span-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center justify-between">
-                  <span>คนขายไก่</span>
-                  <span className="text-xs text-orange-500">(เรท ฿{wageSettings.sellRate}/กล่อง)</span>
-                </label>
-                <button 
-                  type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })}
-                  className={`w-full p-2.5 border rounded-lg flex items-center justify-between transition ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
-                >
-                  <span className="flex items-center gap-1.5"><ShoppingBag className="w-4 h-4"/> เลือกพนักงาน</span>
-                  <span className="font-bold">{wageForm.sellPartners.length} คน</span>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                   <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" />
+                   <input type="number" min="0" placeholder="จำนวนกล่อง" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600" />
+                </div>
+                <div className="flex gap-2">
+                   <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-2 border rounded-lg text-sm flex flex-col items-center justify-center transition ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                     <span className="flex items-center gap-1"><ChefHat className="w-3.5 h-3.5"/> ทำไก่</span>
+                     <span className="font-bold">{wageForm.prepPartners.length} คน</span>
+                   </button>
+                   <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-2 border rounded-lg text-sm flex flex-col items-center justify-center transition ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                     <span className="flex items-center gap-1"><ShoppingBag className="w-3.5 h-3.5"/> ขายไก่</span>
+                     <span className="font-bold">{wageForm.sellPartners.length} คน</span>
+                   </button>
+                </div>
+                <button onClick={handleCalculateWages} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg text-sm transition shadow-sm">
+                  คำนวณและแจกจ่าย
                 </button>
               </div>
             </div>
-            <div className="mt-4 flex justify-end">
-              <button 
-                onClick={handleCalculateWages}
-                className="w-full md:w-auto bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 px-6 rounded-lg transition shadow-md flex items-center justify-center gap-2"
-              >
-                <Calculator className="w-5 h-5" /> คำนวณและแจกจ่ายค่าแรง
-              </button>
+
+            {/* กล่องจัดส่ง */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-200 bg-gradient-to-br from-white to-purple-50/30">
+              <div className="flex justify-between items-center mb-3 border-b border-purple-100 pb-2">
+                <h2 className="text-sm md:text-base font-semibold text-purple-800 flex items-center gap-1.5">
+                  <Truck className="w-4 h-4" /> ค่าแรงจัดส่ง (รอบ)
+                </h2>
+                <button 
+                  onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })}
+                  className="text-purple-600 hover:text-purple-800 bg-purple-100 p-1.5 rounded transition" title="ตั้งค่าเรท"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                   <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" />
+                   <input type="number" min="0" placeholder="จำนวนรอบรวม" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600" />
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setDeliverySelectModal(true)} 
+                  className={`w-full p-2 border rounded-lg text-sm flex items-center justify-between transition ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+                >
+                  <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
+                  <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
+                </button>
+                <button onClick={handleCalculateDelivery} className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 rounded-lg text-sm transition shadow-sm">
+                  คำนวณและแจกจ่าย
+                </button>
+              </div>
             </div>
 
-            {/* แสดงประวัติการคำนวณ */}
-            {wageHistory.length > 0 && (
-              <div className="mt-6 border-t border-orange-100 pt-4">
-                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1 mb-3"><History className="w-4 h-4"/> ประวัติการคำนวณค่าแรงย้อนหลัง</h3>
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+          </div>
+        )}
+
+        {/* แสดงประวัติการคำนวณค่าแรง (แยกจากบัญชีหลัก) */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <button 
+             onClick={() => setIsWageHistoryOpen(!isWageHistoryOpen)}
+             className="w-full p-4 bg-orange-50/50 hover:bg-orange-100/50 border-b border-orange-100 flex justify-between items-center transition"
+          >
+            <div className="flex items-center gap-2">
+               <History className="w-5 h-5 text-orange-600" />
+               <h3 className="font-semibold text-orange-800">ประวัติคำนวณค่าแรง (กล่อง/จัดส่ง)</h3>
+            </div>
+            <div className="flex items-center gap-2">
+               <span className="text-xs font-bold text-orange-600 bg-white px-3 py-1 rounded-full shadow-sm">{wageHistory.length} รายการ</span>
+               {isWageHistoryOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+            </div>
+          </button>
+          
+          {isWageHistoryOpen && (
+            <div className="max-h-60 overflow-y-auto bg-white p-2">
+              {wageHistory.length === 0 ? (
+                <p className="text-center py-6 text-gray-400 text-sm">ไม่พบประวัติการคำนวณ</p>
+              ) : (
+                <div className="space-y-2">
                   {wageHistory.map(log => (
-                    <div key={log.id} className="bg-white border border-gray-100 rounded-lg p-3 text-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-2 hover:bg-orange-50/50 transition">
+                    <div key={log.id} className={`border rounded-lg p-3 text-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-2 transition ${log.logType === 'delivery' ? 'bg-purple-50/30 border-purple-100 hover:bg-purple-50' : 'bg-orange-50/30 border-orange-100 hover:bg-orange-50'}`}>
                       <div>
                         <span className="font-bold text-gray-800">{log.date}</span>
                         <span className="mx-2 text-gray-300">|</span>
-                        <span className="text-orange-600 font-medium">ยอดขาย {log.boxes} กล่อง</span>
+                        
+                        {log.logType === 'delivery' ? (
+                           <span className="text-purple-600 font-medium">ส่งของรวม {log.totalTrips} รอบ</span>
+                        ) : (
+                           <span className="text-orange-600 font-medium">ยอดขาย {log.boxes} กล่อง</span>
+                        )}
+
                         <div className="text-xs text-gray-500 mt-1">
-                          {log.prepNames?.length > 0 && <span><ChefHat className="w-3 h-3 inline mr-1 text-gray-400"/> ทำไก่: {log.prepNames.join(', ')} (รวม ฿{log.prepTotal})</span>}
-                          {log.prepNames?.length > 0 && log.sellNames?.length > 0 && <span className="mx-1 text-gray-300">|</span>}
-                          {log.sellNames?.length > 0 && <span><ShoppingBag className="w-3 h-3 inline mr-1 text-gray-400"/> ขายไก่: {log.sellNames.join(', ')} (รวม ฿{log.sellTotal})</span>}
+                          {log.logType === 'delivery' ? (
+                             <span><Truck className="w-3 h-3 inline mr-1 text-gray-400"/> คนส่ง: {log.deliveryDetails?.map(d => `${d.name}(${d.trips})`).join(', ')} (รวม ฿{log.totalAmount})</span>
+                          ) : (
+                             <>
+                               {log.prepNames?.length > 0 && <span><ChefHat className="w-3 h-3 inline mr-1 text-gray-400"/> ทำไก่: {log.prepNames.join(', ')} (รวม ฿{log.prepTotal})</span>}
+                               {log.prepNames?.length > 0 && log.sellNames?.length > 0 && <span className="mx-1 text-gray-300">|</span>}
+                               {log.sellNames?.length > 0 && <span><ShoppingBag className="w-3 h-3 inline mr-1 text-gray-400"/> ขายไก่: {log.sellNames.join(', ')} (รวม ฿{log.sellTotal})</span>}
+                             </>
+                          )}
                         </div>
                       </div>
-                      <button onClick={() => handleDeleteWageLog(log.id)} className="text-gray-400 hover:text-red-500 p-1 bg-gray-50 rounded md:ml-auto">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {isAdmin && (
+                        <button onClick={() => handleDeleteWageLog(log)} className="text-gray-400 hover:text-red-500 p-1.5 bg-white shadow-sm border border-gray-100 rounded md:ml-auto">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
 
 
         {/* Input Form บัญชีหลัก (ซ่อนถ้าไม่ใช่ Admin) */}
@@ -746,48 +972,59 @@ export default function App() {
           </div>
         </div>
 
-        {/* Transaction History List */}
+        {/* Transaction History List (บัญชีหลัก) */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-            <h3 className="font-semibold text-gray-700">ประวัติบัญชีกองกลาง</h3>
-            <span className="text-xs font-bold text-gray-600 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">{filteredRecords.length} รายการ</span>
-          </div>
+          <button 
+             onClick={() => setIsMainHistoryOpen(!isMainHistoryOpen)}
+             className="w-full p-4 bg-gray-50 hover:bg-gray-100 border-b border-gray-200 flex justify-between items-center transition"
+          >
+            <div className="flex items-center gap-2">
+               <History className="w-5 h-5 text-gray-600" />
+               <h3 className="font-semibold text-gray-700">ประวัติบัญชีกองกลาง</h3>
+            </div>
+            <div className="flex items-center gap-2">
+               <span className="text-xs font-bold text-gray-600 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">{filteredRecords.length} รายการ</span>
+               {isMainHistoryOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+            </div>
+          </button>
           
-          <div className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto bg-white">
-            {filteredRecords.length === 0 ? (
-              <p className="text-center py-8 text-gray-400 text-sm">ไม่พบประวัติรายการบัญชี</p>
-            ) : (
-              filteredRecords.map((record) => (
-                <div key={record.id} className="p-4 hover:bg-blue-50 flex items-center justify-between transition-colors">
-                  <div className="flex items-start md:items-center gap-3 overflow-hidden pr-2">
-                    <div className={`p-2 rounded-full shrink-0 mt-0.5 md:mt-0 ${record.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                      {record.type === 'income' ? <PlusCircle className="w-5 h-5" /> : <MinusCircle className="w-5 h-5" />}
-                    </div>
-                    <div className="overflow-hidden">
-                      <p className="font-semibold text-gray-800 text-sm md:text-base truncate">{record.category}</p>
-                      <p className="text-xs text-gray-500 break-words">{record.date} {record.note ? `• ${record.note}` : ''}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col items-end gap-1.5 shrink-0 pl-2">
-                    <span className={`font-bold text-sm md:text-base ${record.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                      {record.type === 'income' ? '+' : '-'}฿{record.amount.toLocaleString()}
-                    </span>
-                    {isAdmin && (
-                      <div className="flex gap-1">
-                        <button onClick={() => handleEdit(record)} className="text-gray-400 hover:text-blue-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="แก้ไข">
-                          <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                        </button>
-                        <button onClick={() => handleDelete(record.id, record)} className="text-gray-400 hover:text-red-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="ลบ">
-                          <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                        </button>
+          {isMainHistoryOpen && (
+            <div className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto bg-white">
+              {filteredRecords.length === 0 ? (
+                <p className="text-center py-8 text-gray-400 text-sm">ไม่พบประวัติรายการบัญชี</p>
+              ) : (
+                filteredRecords.map((record) => (
+                  <div key={record.id} className="p-4 hover:bg-blue-50 flex items-center justify-between transition-colors">
+                    <div className="flex items-start md:items-center gap-3 overflow-hidden pr-2">
+                      <div className={`p-2 rounded-full shrink-0 mt-0.5 md:mt-0 ${record.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                        {record.type === 'income' ? <PlusCircle className="w-5 h-5" /> : <MinusCircle className="w-5 h-5" />}
                       </div>
-                    )}
+                      <div className="overflow-hidden">
+                        <p className="font-semibold text-gray-800 text-sm md:text-base truncate">{record.category}</p>
+                        <p className="text-xs text-gray-500 break-words">{record.date} {record.note ? `• ${record.note}` : ''}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col items-end gap-1.5 shrink-0 pl-2">
+                      <span className={`font-bold text-sm md:text-base ${record.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                        {record.type === 'income' ? '+' : '-'}฿{record.amount.toLocaleString()}
+                      </span>
+                      {isAdmin && (
+                        <div className="flex gap-1">
+                          <button onClick={() => handleEdit(record)} className="text-gray-400 hover:text-blue-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="แก้ไข">
+                            <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(record.id, record)} className="text-gray-400 hover:text-red-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="ลบ">
+                            <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
       </div>
@@ -858,12 +1095,12 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal ตั้งค่าเรทค่าแรง */}
+      {/* Modal ตั้งค่าเรทค่าแรง/ค่าส่ง */}
       {wageSettingsModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800 border-b pb-3">
-              <Settings className="text-orange-500" /> ตั้งค่าเรทค่าแรง (ต่อกล่อง)
+              <Settings className="text-orange-500" /> ตั้งค่าเรทค่าแรง & ค่าส่ง
             </h3>
             <form onSubmit={handleSaveWageSettings}>
               <div className="space-y-4">
@@ -883,17 +1120,25 @@ export default function App() {
                     placeholder="0.00"
                   />
                 </div>
+                <div className="pt-2 border-t border-gray-100">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ค่าจัดส่ง (บาท/รอบ)</label>
+                  <input type="number" step="any" min="0" required
+                    value={wageSettingsModal.deliveryRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, deliveryRate: e.target.value})}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white text-gray-900"
+                    placeholder="0.00"
+                  />
+                </div>
               </div>
               <div className="flex gap-2 mt-6 pt-2">
-                <button type="button" onClick={() => setWageSettingsModal({ isOpen: false, prepRate: '', sellRate: '' })} className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition">ยกเลิก</button>
-                <button type="submit" className="flex-1 py-2.5 text-white bg-orange-600 hover:bg-orange-700 rounded-lg text-sm font-bold transition shadow-sm">บันทึกตั้งค่า</button>
+                <button type="button" onClick={() => setWageSettingsModal({ isOpen: false, prepRate: '', sellRate: '', deliveryRate: '' })} className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-bold transition shadow-sm">บันทึกตั้งค่า</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Modal เลือกคนทำงาน */}
+      {/* Modal เลือกคนทำไก่ / ขายไก่ */}
       {partnerSelectModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
@@ -909,8 +1154,7 @@ export default function App() {
                  return (
                    <label key={p.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:bg-gray-50'}`}>
                       <input 
-                        type="checkbox" 
-                        checked={isSelected}
+                        type="checkbox" checked={isSelected}
                         onChange={() => togglePartnerSelection(p.id, partnerSelectModal.type)}
                         className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 cursor-pointer"
                       />
@@ -920,13 +1164,90 @@ export default function App() {
               })}
             </div>
             
-            <button 
-              type="button" 
-              onClick={() => setPartnerSelectModal({ isOpen: false, type: '' })} 
-              className="w-full py-3 text-white bg-gray-800 hover:bg-black rounded-lg text-sm font-bold transition shadow-sm shrink-0"
-            >
-              ตกลง
-            </button>
+            <button type="button" onClick={() => setPartnerSelectModal({ isOpen: false, type: '' })} className="w-full py-3 text-white bg-gray-800 hover:bg-black rounded-lg text-sm font-bold transition shadow-sm shrink-0">ตกลง</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal เลือกคนส่งของ (ป้อนตัวเลขรอบ) */}
+      {deliverySelectModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-bold mb-1 flex items-center gap-2 text-gray-800 shrink-0">
+              <Truck className="text-purple-500" /> ระบุรอบส่งของแต่ละคน
+            </h3>
+            <p className="text-sm text-gray-500 mb-4 border-b pb-3">รวมต้องได้ {deliveryForm.totalTrips || 0} รอบ (คุณสามารถแก้ยอดรวมหน้าก่อนนี้ได้)</p>
+            
+            <div className="overflow-y-auto flex-1 space-y-2 pr-2 mb-4">
+              {partners.length === 0 ? <p className="text-center text-sm text-gray-400 py-4">ยังไม่มีรายชื่อพนักงาน</p> : null}
+              {partners.map(p => {
+                 const currentTrips = deliveryForm.tripsByPartner[p.id] || 0;
+                 return (
+                   <div key={p.id} className={`flex items-center justify-between p-2 rounded-lg border transition ${currentTrips > 0 ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                      <span className={`font-medium ml-2 ${currentTrips > 0 ? 'text-purple-800' : 'text-gray-700'}`}>{p.name}</span>
+                      <div className="flex items-center gap-2">
+                         <input 
+                           type="number" min="0" step="1" placeholder="0"
+                           value={currentTrips || ''}
+                           onChange={(e) => handleDeliveryTripChange(p.id, e.target.value)}
+                           className="w-16 p-1.5 text-center border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 outline-none text-sm font-bold text-purple-600 bg-white"
+                         />
+                         <span className="text-xs text-gray-500 w-6">รอบ</span>
+                      </div>
+                   </div>
+                 );
+              })}
+            </div>
+            
+            <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg mb-4 text-sm">
+               <span className="font-medium text-gray-600">รวมที่กรอกแล้ว:</span>
+               <span className={`font-bold ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) === Number(deliveryForm.totalTrips) ? 'text-green-600' : 'text-red-500'}`}>
+                  {Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0}
+               </span>
+            </div>
+
+            <button type="button" onClick={() => setDeliverySelectModal(false)} className="w-full py-3 text-white bg-gray-800 hover:bg-black rounded-lg text-sm font-bold transition shadow-sm shrink-0">ตกลง / ปิด</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal ดูประวัติส่วนตัว (Face Card Details) */}
+      {partnerDetailsModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-blue-50/50 rounded-t-xl shrink-0">
+               <h3 className="text-lg font-bold flex items-center gap-2 text-gray-800">
+                 <Info className="text-blue-500 w-5 h-5" /> ประวัติยอดเงิน: {partnerDetailsModal.partner?.name}
+               </h3>
+               <button onClick={() => setPartnerDetailsModal({ isOpen: false, partner: null })} className="text-gray-400 hover:text-gray-600 p-1"><X className="w-5 h-5"/></button>
+            </div>
+            
+            <div className="overflow-y-auto flex-1 p-4 bg-gray-50">
+               {getPartnerStatement(partnerDetailsModal.partner).length === 0 ? (
+                 <p className="text-center text-sm text-gray-400 py-10">ยังไม่มีประวัติการได้เงิน หรือการเบิกจ่าย</p>
+               ) : (
+                 <div className="space-y-2">
+                   {getPartnerStatement(partnerDetailsModal.partner).map((stmt, idx) => (
+                     <div key={idx} className={`p-3 rounded-lg border bg-white flex justify-between items-center shadow-sm ${stmt.isIncome ? 'border-l-4 border-l-orange-400' : 'border-l-4 border-l-blue-400'}`}>
+                        <div>
+                          <div className="font-semibold text-gray-800 text-sm">{stmt.text}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{stmt.date}</div>
+                        </div>
+                        <div className={`font-bold ${stmt.isIncome ? 'text-orange-600' : 'text-blue-600'}`}>
+                           {stmt.isIncome ? '+' : '-'}฿{stmt.amount.toLocaleString()}
+                        </div>
+                     </div>
+                   ))}
+                 </div>
+               )}
+            </div>
+            
+            <div className="p-4 border-t border-gray-100 bg-white rounded-b-xl shrink-0">
+               <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-600">ยอดรอจ่ายปัจจุบัน:</span>
+                  <span className="text-lg font-bold text-gray-800">฿{(partnerDetailsModal.partner?.pendingWage || 0).toLocaleString()}</span>
+               </div>
+            </div>
           </div>
         </div>
       )}
