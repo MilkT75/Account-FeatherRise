@@ -10,7 +10,8 @@ import {
   PlusCircle, MinusCircle, Wallet, Trash2, Edit2, 
   X, Check, Filter, Users, UserPlus, Banknote, Settings,
   LogOut, Lock, Calculator, ChefHat, ShoppingBag, History,
-  Undo, Redo, ChevronDown, ChevronUp, Info, Truck, Camera, Image as ImageIcon
+  Undo, Redo, ChevronDown, ChevronUp, Info, Truck, Camera, Image as ImageIcon,
+  PieChart, ClipboardList, Plus
 } from 'lucide-react';
 
 // ==========================================
@@ -107,6 +108,7 @@ export default function App() {
   // UI Collapse States
   const [isMainHistoryOpen, setIsMainHistoryOpen] = useState(true);
   const [isWageHistoryOpen, setIsWageHistoryOpen] = useState(true);
+  const [isCostSectionOpen, setIsCostSectionOpen] = useState(true); // สถานะย่อขยายระบบต้นทุน
 
   // Main Accounting Form State
   const [formData, setFormData] = useState({
@@ -142,6 +144,18 @@ export default function App() {
     date: new Date().toISOString().split('T')[0], totalTrips: '', tripsByPartner: {} 
   });
   const [deliverySelectModal, setDeliverySelectModal] = useState({ isOpen: false });
+
+  // ==========================================
+  // Cost Profiles State (ระบบคำนวณต้นทุน)
+  // ==========================================
+  const [costProfiles, setCostProfiles] = useState([]);
+  const [costFormModal, setCostFormModal] = useState({ isOpen: false, mode: 'add', id: null });
+  const [costForm, setCostForm] = useState({
+    name: '',
+    ingredients: [{ id: Date.now(), name: '', price: '', yield: '', usage: '' }]
+  });
+  const [costDetailsModal, setCostDetailsModal] = useState({ isOpen: false, profile: null });
+
 
   // Categories
   const categories = {
@@ -220,10 +234,21 @@ export default function App() {
           return timeB - timeA;
       });
       setWageHistory(wData);
+    });
+
+    const unsubCostProfiles = onSnapshot(collection(db, 'accounting_cost_profiles'), (snapshot) => {
+      const cData = [];
+      snapshot.forEach(doc => cData.push({ id: doc.id, ...doc.data() }));
+      cData.sort((a, b) => {
+          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+          return timeB - timeA; // เรียงจากเก่าไปใหม่
+      });
+      setCostProfiles(cData);
       setLoading(false);
     });
 
-    return () => { unsubRecords(); unsubPartners(); unsubCapital(); unsubWageRates(); unsubWageHistory(); };
+    return () => { unsubRecords(); unsubPartners(); unsubCapital(); unsubWageRates(); unsubWageHistory(); unsubCostProfiles(); };
   }, [user]);
 
   // === ระบบ Login Admin ===
@@ -469,7 +494,7 @@ export default function App() {
   };
 
   // ==========================================
-  // Advanced Wage Calculation
+  // Advanced Wage Calculation (ทำไก่/ขายไก่)
   // ==========================================
   const handleSaveWageSettings = async (e) => {
     e.preventDefault();
@@ -622,6 +647,93 @@ export default function App() {
     if(!window.confirm("ต้องการลบประวัติการคำนวณนี้ใช่หรือไม่?\n(ยอดที่แจกจ่ายไปแล้วจะไม่ถูกดึงกลับอัตโนมัติ)")) return;
     await deleteDoc(doc(db, 'accounting_wage_logs', log.id));
     recordAction({ type: 'single', col: 'accounting_wage_logs', docId: log.id, oldData: log, newData: null });
+  };
+
+  // ==========================================
+  // 10. Cost Profiles Handlers (ระบบคำนวณต้นทุน)
+  // ==========================================
+  const handleCostIngredientChange = (id, field, value) => {
+    setCostForm(prev => ({
+      ...prev,
+      ingredients: prev.ingredients.map(ing => ing.id === id ? { ...ing, [field]: value } : ing)
+    }));
+  };
+
+  const addCostIngredient = () => {
+    setCostForm(prev => ({
+      ...prev,
+      ingredients: [...prev.ingredients, { id: Date.now(), name: '', price: '', yield: '', usage: '' }]
+    }));
+  };
+
+  const removeCostIngredient = (id) => {
+    setCostForm(prev => ({
+      ...prev,
+      ingredients: prev.ingredients.filter(ing => ing.id !== id)
+    }));
+  };
+
+  const calculateIngredientCost = (ing) => {
+    const price = Number(ing.price) || 0;
+    const yieldAmt = Number(ing.yield) || 1; // ป้องกันหาร 0
+    const usage = Number(ing.usage) || 0;
+    if(yieldAmt <= 0) return 0;
+    return (price / yieldAmt) * usage;
+  };
+
+  const calculateTotalCost = (ingredients) => {
+    return ingredients.reduce((sum, ing) => sum + calculateIngredientCost(ing), 0);
+  };
+
+  const handleSaveCostProfile = async (e) => {
+    e.preventDefault();
+    if (!isAdmin || !db) return;
+    if (!costForm.name.trim()) return alert("กรุณาตั้งชื่อสูตรต้นทุน");
+
+    const totalCost = calculateTotalCost(costForm.ingredients);
+    const payload = {
+        name: costForm.name,
+        ingredients: costForm.ingredients,
+        totalCost: totalCost,
+        updatedAt: serverTimestamp()
+    };
+
+    try {
+        if (costFormModal.mode === 'edit' && costFormModal.id) {
+            const oldProfile = costProfiles.find(p => p.id === costFormModal.id);
+            await updateDoc(doc(db, 'accounting_cost_profiles', costFormModal.id), payload);
+            recordAction({ type: 'single', col: 'accounting_cost_profiles', docId: costFormModal.id, oldData: oldProfile, newData: payload });
+        } else {
+            payload.createdAt = serverTimestamp();
+            const docRef = await addDoc(collection(db, 'accounting_cost_profiles'), payload);
+            recordAction({ type: 'single', col: 'accounting_cost_profiles', docId: docRef.id, oldData: null, newData: payload });
+        }
+        setCostFormModal({ isOpen: false, mode: 'add', id: null });
+        setCostForm({ name: '', ingredients: [{ id: Date.now(), name: '', price: '', yield: '', usage: '' }] });
+    } catch (err) {
+        alert("บันทึกต้นทุนล้มเหลว: " + err.message);
+    }
+  };
+
+  const openEditCostProfile = (profile) => {
+    if (!isAdmin) return;
+    setCostForm({
+        name: profile.name,
+        ingredients: profile.ingredients || []
+    });
+    setCostFormModal({ isOpen: true, mode: 'edit', id: profile.id });
+  };
+
+  const handleDeleteCostProfile = async (profileId, profileData) => {
+    if (!isAdmin || !db) return;
+    if (!window.confirm("ต้องการลบสูตรต้นทุนนี้ใช่หรือไม่?")) return;
+    try {
+        await deleteDoc(doc(db, 'accounting_cost_profiles', profileId));
+        recordAction({ type: 'single', col: 'accounting_cost_profiles', docId: profileId, oldData: profileData, newData: null });
+        setCostDetailsModal({ isOpen: false, profile: null });
+    } catch (err) {
+        alert("ลบล้มเหลว: " + err.message);
+    }
   };
 
   // ==========================================
@@ -826,14 +938,14 @@ export default function App() {
                     <div className="w-full flex flex-col gap-2 mt-1">
                         <button 
                           onClick={() => setPartnerModal({ isOpen: true, mode: 'setWage', data: partner, value: partner.pendingWage || '' })}
-                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-xl text-xs font-medium hover:bg-gray-50 active:scale-[0.97] transition-all duration-200 shadow-sm"
+                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-50 active:scale-[0.97] transition-all duration-200 shadow-sm"
                         >
                           <Settings className="w-3.5 h-3.5" /> ตั้งยอดค่าแรง
                         </button>
                         <button 
                           onClick={() => handlePayWage(partner)}
                           disabled={!partner.pendingWage || partner.pendingWage <= 0}
-                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-xl text-xs font-bold hover:bg-blue-600 hover:text-white active:scale-[0.97] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
+                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white active:scale-[0.97] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
                         >
                           <Banknote className="w-4 h-4" /> จ่ายเงินตัดบัญชี
                         </button>
@@ -926,43 +1038,41 @@ export default function App() {
           </button>
           
           <div className={`overflow-hidden transition-all duration-300 ease-out ${isWageHistoryOpen ? 'max-h-[100vh] opacity-100' : 'max-h-0 opacity-0'}`}>
-            <div className={`max-h-96 overflow-y-auto bg-white p-3 ${scrollbarClass}`}>
+            <div className={`max-h-[60vh] overflow-y-auto bg-white p-3 space-y-3 ${scrollbarClass}`}>
               {wageHistory.length === 0 ? (
-                <p className="text-center py-6 text-gray-400 text-sm">ไม่พบประวัติการคำนวณ</p>
+                <p className="text-center py-8 text-gray-400 text-sm">ไม่พบประวัติการคำนวณ</p>
               ) : (
-                <div className="space-y-3">
-                  {wageHistory.map(log => (
-                    <div key={log.id} className={`border rounded-2xl p-3.5 text-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-2 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${log.logType === 'delivery' ? 'bg-purple-50/30 border-purple-100 hover:bg-purple-50' : 'bg-orange-50/30 border-orange-100 hover:bg-orange-50'}`}>
-                      <div>
-                        <span className="font-bold text-gray-800">{log.date}</span>
-                        <span className="mx-2 text-gray-300">|</span>
-                        
-                        {log.logType === 'delivery' ? (
-                           <span className="text-purple-600 font-medium">ส่งของรวม {log.totalTrips} รอบ</span>
-                        ) : (
-                           <span className="text-orange-600 font-medium">ยอดขาย {log.boxes} กล่อง</span>
-                        )}
-
-                        <div className="text-xs text-gray-500 mt-1">
-                          {log.logType === 'delivery' ? (
-                             <span><Truck className="w-3 h-3 inline mr-1 text-gray-400"/> คนส่ง: {log.deliveryDetails?.map(d => `${d.name}(${d.trips})`).join(', ')} (รวม ฿{log.totalAmount})</span>
-                          ) : (
-                             <>
-                               {log.prepNames?.length > 0 && <span><ChefHat className="w-3 h-3 inline mr-1 text-gray-400"/> ทำไก่: {log.prepNames.join(', ')} (รวม ฿{log.prepTotal})</span>}
-                               {log.prepNames?.length > 0 && log.sellNames?.length > 0 && <span className="mx-1 text-gray-300">|</span>}
-                               {log.sellNames?.length > 0 && <span><ShoppingBag className="w-3 h-3 inline mr-1 text-gray-400"/> ขายไก่: {log.sellNames.join(', ')} (รวม ฿{log.sellTotal})</span>}
-                             </>
-                          )}
-                        </div>
-                      </div>
-                      {isAdmin && (
-                        <button onClick={() => handleDeleteWageLog(log)} className="text-gray-400 hover:text-red-500 p-2 bg-white shadow-sm border border-gray-100 rounded-lg md:ml-auto active:scale-90 transition-all duration-200">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                wageHistory.map(log => (
+                  <div key={log.id} className={`border rounded-2xl p-3.5 text-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-2 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${log.logType === 'delivery' ? 'bg-purple-50/30 border-purple-100 hover:bg-purple-50' : 'bg-orange-50/30 border-orange-100 hover:bg-orange-50'}`}>
+                    <div>
+                      <span className="font-bold text-gray-800">{log.date}</span>
+                      <span className="mx-2 text-gray-300">|</span>
+                      
+                      {log.logType === 'delivery' ? (
+                         <span className="text-purple-600 font-medium">ส่งของรวม {log.totalTrips} รอบ</span>
+                      ) : (
+                         <span className="text-orange-600 font-medium">ยอดขาย {log.boxes} กล่อง</span>
                       )}
+
+                      <div className="text-xs text-gray-500 mt-1">
+                        {log.logType === 'delivery' ? (
+                           <span><Truck className="w-3 h-3 inline mr-1 text-gray-400"/> คนส่ง: {log.deliveryDetails?.map(d => `${d.name}(${d.trips})`).join(', ')} (รวม ฿{log.totalAmount})</span>
+                        ) : (
+                           <>
+                             {log.prepNames?.length > 0 && <span><ChefHat className="w-3 h-3 inline mr-1 text-gray-400"/> ทำไก่: {log.prepNames.join(', ')} (รวม ฿{log.prepTotal})</span>}
+                             {log.prepNames?.length > 0 && log.sellNames?.length > 0 && <span className="mx-1 text-gray-300">|</span>}
+                             {log.sellNames?.length > 0 && <span><ShoppingBag className="w-3 h-3 inline mr-1 text-gray-400"/> ขายไก่: {log.sellNames.join(', ')} (รวม ฿{log.sellTotal})</span>}
+                           </>
+                        )}
+                      </div>
                     </div>
-                  ))}
-                </div>
+                    {isAdmin && (
+                      <button onClick={() => handleDeleteWageLog(log)} className="text-gray-400 hover:text-red-500 p-2 bg-white shadow-sm border border-gray-100 rounded-lg md:ml-auto active:scale-90 transition-all duration-200">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -1116,6 +1226,66 @@ export default function App() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* ==================================================== */}
+        {/* NEW: ระบบคำนวณต้นทุน (แยกอิสระ) */}
+        {/* ==================================================== */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-300 mt-8">
+          <button onClick={() => setIsCostSectionOpen(!isCostSectionOpen)} className="w-full p-4 bg-teal-50/50 hover:bg-teal-100/50 border-b border-teal-100 flex justify-between items-center transition-colors duration-200">
+            <div className="flex items-center gap-2">
+               <PieChart className="w-5 h-5 text-teal-600" />
+               <h3 className="font-semibold text-teal-800">ระบบคำนวณต้นทุน/กล่อง (จำลองสูตร)</h3>
+            </div>
+            <div className="flex items-center gap-2">
+               {isAdmin && (
+                 <span onClick={(e) => { e.stopPropagation(); setCostFormModal({ isOpen: true, mode: 'add', id: null }); setCostForm({ name: '', ingredients: [{ id: Date.now(), name: '', price: '', yield: '', usage: '' }] }); }} className="text-xs font-bold text-teal-700 bg-white px-3 py-1 rounded-full shadow-sm hover:bg-teal-50 active:scale-90 transition-all flex items-center gap-1 border border-teal-100">
+                   <Plus className="w-3 h-3"/> เพิ่มสูตร
+                 </span>
+               )}
+               <ChevronDown className={`w-5 h-5 text-teal-400 transition-transform duration-300 ease-out ${isCostSectionOpen ? 'rotate-180' : ''}`} />
+            </div>
+          </button>
+          
+          <div className={`overflow-hidden transition-all duration-300 ease-out ${isCostSectionOpen ? 'max-h-[150vh] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="p-4 md:p-6 bg-teal-50/10">
+               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+                  {costProfiles.length === 0 ? (
+                    <div className="col-span-full p-6 text-center text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200">ยังไม่มีสูตรคำนวณต้นทุน</div>
+                  ) : (
+                    costProfiles.map(profile => (
+                      <div key={profile.id} className="border border-gray-200 rounded-2xl p-4 flex flex-col justify-between gap-3 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white relative group">
+                         <div className="flex justify-between items-start">
+                            <div className="pr-6">
+                               <span className="font-bold text-gray-800 text-sm block line-clamp-2 leading-snug">{profile.name}</span>
+                               <span className="text-xs text-gray-500 mt-1 block">{profile.ingredients?.length || 0} วัตถุดิบ</span>
+                            </div>
+                            <button onClick={() => setCostDetailsModal({ isOpen: true, profile })} className="absolute top-3 right-3 text-teal-400 hover:text-teal-600 transition-all duration-200 p-1 active:scale-90" title="ดูรายละเอียดต้นทุน">
+                               <Info className="w-5 h-5" />
+                            </button>
+                         </div>
+                         
+                         <div className="mt-2 bg-gray-50 rounded-xl p-3 border border-gray-100 text-center transition-colors duration-300 group-hover:bg-teal-50/30">
+                            <span className="text-xs text-gray-500 block mb-0.5">ต้นทุนรวมสุทธิ/กล่อง</span>
+                            <span className="text-xl font-bold text-teal-600">฿{(profile.totalCost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                         </div>
+                         
+                         {isAdmin && (
+                           <div className="flex gap-2 mt-1">
+                              <button onClick={() => openEditCostProfile(profile)} className="flex-1 flex items-center justify-center gap-1.5 bg-white text-gray-600 border border-gray-200 py-2 rounded-xl text-xs font-medium hover:bg-gray-50 active:scale-[0.97] transition-all duration-200 shadow-sm">
+                                <Edit2 className="w-3 h-3" /> แก้ไข
+                              </button>
+                              <button onClick={() => handleDeleteCostProfile(profile.id, profile)} className="flex items-center justify-center bg-white text-red-500 border border-red-100 py-2 px-3 rounded-xl hover:bg-red-50 active:scale-[0.97] transition-all duration-200 shadow-sm">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                           </div>
+                         )}
+                      </div>
+                    ))
+                  )}
+               </div>
             </div>
           </div>
         </div>
@@ -1339,6 +1509,117 @@ export default function App() {
                    ฿{((partnerDetailsModal.partner?.pendingWage || 0) + dividendPerPerson).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
                 </span>
              </div>
+          </div>
+      </AnimatedModal>
+
+      {/* ==================================================== */}
+      {/* NEW: Modal จัดการสูตรคำนวณต้นทุน (Admin) */}
+      {/* ==================================================== */}
+      <AnimatedModal isOpen={costFormModal.isOpen} onClose={() => setCostFormModal(prev => ({ ...prev, isOpen: false }))} maxWidth="max-w-2xl" pClass="p-0">
+         <div className="p-4 border-b border-teal-100 flex justify-between items-center bg-teal-50/50 rounded-t-3xl shrink-0">
+             <h3 className="text-lg font-bold flex items-center gap-2 text-teal-800">
+               {costFormModal.mode === 'add' ? <PlusCircle className="text-teal-500 w-5 h-5" /> : <Edit2 className="text-teal-500 w-5 h-5" />}
+               {costFormModal.mode === 'add' ? 'สร้างสูตรคำนวณต้นทุนใหม่' : 'แก้ไขสูตรคำนวณ'}
+             </h3>
+             <button onClick={() => setCostFormModal(prev => ({ ...prev, isOpen: false }))} className="text-teal-400 hover:text-teal-600 p-1.5 bg-white rounded-full shadow-sm active:scale-90 transition-all"><X className="w-4 h-4"/></button>
+          </div>
+
+          <form onSubmit={handleSaveCostProfile} className="flex flex-col h-full max-h-[70vh]">
+              <div className={`overflow-y-auto flex-1 p-4 md:p-6 bg-gray-50/30 ${scrollbarClass}`}>
+                 <div className="mb-6">
+                    <label className="block text-sm font-bold text-gray-700 mb-1">ชื่อสูตรต้นทุน (เช่น เมนูไก่ทอด 6 ชิ้น)</label>
+                    <input 
+                      type="text" required value={costForm.name} onChange={e => setCostForm({...costForm, name: e.target.value})}
+                      className="w-full p-3 h-[52px] border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
+                      placeholder="ตั้งชื่อสูตร..."
+                    />
+                 </div>
+
+                 <div className="space-y-4">
+                    <div className="flex justify-between items-end border-b pb-2">
+                       <h4 className="font-bold text-gray-700">วัตถุดิบที่ใช้</h4>
+                       <button type="button" onClick={addCostIngredient} className="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100 hover:bg-teal-100 active:scale-95 transition-all flex items-center gap-1">
+                          <Plus className="w-3 h-3"/> เพิ่มวัตถุดิบ
+                       </button>
+                    </div>
+
+                    {costForm.ingredients.map((ing, idx) => (
+                       <div key={ing.id} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm relative pt-6 md:pt-4">
+                          {costForm.ingredients.length > 1 && (
+                            <button type="button" onClick={() => removeCostIngredient(ing.id)} className="absolute top-2 right-2 md:top-4 md:right-4 text-gray-400 hover:text-red-500 p-1 active:scale-90 transition-all">
+                               <Trash2 className="w-4 h-4"/>
+                            </button>
+                          )}
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                             <div className="md:col-span-4">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">ชื่อวัตถุดิบ</label>
+                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ปีกเต็มไก่ (ถุง 1 กก.)"/>
+                             </div>
+                             <div>
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">ราคาซื้อมา (฿)</label>
+                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 appearance-none" placeholder="เช่น 80"/>
+                             </div>
+                             <div>
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">ได้ของกี่ชิ้น/หน่วย?</label>
+                                <input type="number" required min="0.01" step="any" value={ing.yield} onChange={e => handleCostIngredientChange(ing.id, 'yield', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 appearance-none" placeholder="เช่น 12"/>
+                             </div>
+                             <div>
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">ใช้ต่อ 1 กล่อง</label>
+                                <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 appearance-none text-teal-700 font-bold" placeholder="เช่น 6"/>
+                             </div>
+                             <div className="flex flex-col justify-end pb-1 text-right">
+                                <span className="text-xs text-gray-400">ต้นทุนวัตถุดิบนี้</span>
+                                <span className="font-bold text-teal-600">฿{calculateIngredientCost(ing).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                             </div>
+                          </div>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+              <div className="p-5 border-t border-gray-100 bg-white rounded-b-3xl shrink-0 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                 <div className="w-full sm:w-auto text-center sm:text-left bg-teal-50 px-4 py-2 rounded-xl border border-teal-100">
+                    <span className="text-sm font-bold text-gray-600 mr-2">ต้นทุนรวมสุทธิ/กล่อง:</span>
+                    <span className="text-xl font-bold text-teal-700">฿{calculateTotalCost(costForm.ingredients).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                 </div>
+                 <div className="flex gap-2 w-full sm:w-auto">
+                    <button type="button" onClick={() => setCostFormModal(prev => ({ ...prev, isOpen: false }))} className="flex-1 sm:flex-none py-3 px-6 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium active:scale-[0.97] transition-all">ยกเลิก</button>
+                    <button type="submit" className="flex-1 sm:flex-none py-3 px-6 text-white bg-teal-600 hover:bg-teal-700 rounded-xl text-sm font-bold active:scale-[0.97] transition-all shadow-md">บันทึกสูตร</button>
+                 </div>
+              </div>
+          </form>
+      </AnimatedModal>
+
+      {/* Modal ดูรายละเอียดสูตรต้นทุน */}
+      <AnimatedModal isOpen={costDetailsModal.isOpen} onClose={() => setCostDetailsModal(prev => ({ ...prev, isOpen: false }))} pClass="p-0">
+          <div className="p-4 border-b border-teal-100 flex justify-between items-center bg-teal-50/50 rounded-t-3xl shrink-0">
+             <h3 className="text-lg font-bold flex items-center gap-2 text-teal-900 truncate pr-4">
+               <ClipboardList className="text-teal-500 w-5 h-5 shrink-0" /> {costDetailsModal.profile?.name}
+             </h3>
+             <button onClick={() => setCostDetailsModal(prev => ({ ...prev, isOpen: false }))} className="text-teal-400 hover:text-teal-600 p-1.5 bg-white rounded-full shadow-sm active:scale-90 transition-all shrink-0"><X className="w-4 h-4"/></button>
+          </div>
+          
+          <div className={`overflow-y-auto max-h-[60vh] flex-1 p-4 bg-gray-50/50 ${scrollbarClass}`}>
+             <div className="space-y-3">
+               {costDetailsModal.profile?.ingredients?.map((ing, idx) => (
+                 <div key={idx} className="p-3.5 rounded-xl border border-l-4 border-l-teal-400 bg-white flex flex-col gap-2 shadow-sm hover:shadow-md transition-all duration-200">
+                    <div className="flex justify-between items-start">
+                       <span className="font-bold text-gray-800 text-sm">{ing.name}</span>
+                       <span className="font-bold text-teal-600 text-sm">฿{calculateIngredientCost(ing).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                       <span>ซื้อ ฿{ing.price} (ได้ {ing.yield})</span>
+                       <span>ใช้ {ing.usage} / กล่อง</span>
+                    </div>
+                 </div>
+               ))}
+             </div>
+          </div>
+          
+          <div className="p-5 border-t border-gray-100 bg-white rounded-b-3xl shrink-0 flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+              <span className="text-base font-bold text-gray-700">ต้นทุนรวมทั้งหมด:</span>
+              <span className="text-2xl font-bold text-teal-600">
+                 ฿{(costDetailsModal.profile?.totalCost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+              </span>
           </div>
       </AnimatedModal>
 
