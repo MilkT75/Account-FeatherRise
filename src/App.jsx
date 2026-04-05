@@ -11,7 +11,7 @@ import {
   X, Check, Filter, Users, UserPlus, Banknote, Settings,
   LogOut, Lock, Calculator, ChefHat, ShoppingBag, History,
   Undo, Redo, ChevronDown, ChevronUp, Info, Truck, Camera, Image as ImageIcon,
-  PieChart, ClipboardList, Plus
+  PieChart, ClipboardList, Plus, Zap, Box
 } from 'lucide-react';
 
 // ==========================================
@@ -108,7 +108,7 @@ export default function App() {
   // UI Collapse States
   const [isMainHistoryOpen, setIsMainHistoryOpen] = useState(true);
   const [isWageHistoryOpen, setIsWageHistoryOpen] = useState(true);
-  const [isCostSectionOpen, setIsCostSectionOpen] = useState(true); // สถานะย่อขยายระบบต้นทุน
+  const [isCostSectionOpen, setIsCostSectionOpen] = useState(true);
 
   // Main Accounting Form State
   const [formData, setFormData] = useState({
@@ -152,7 +152,10 @@ export default function App() {
   const [costFormModal, setCostFormModal] = useState({ isOpen: false, mode: 'add', id: null });
   const [costForm, setCostForm] = useState({
     name: '',
-    ingredients: [{ id: Date.now(), name: '', price: '', yield: '', usage: '' }]
+    yieldPieces: '',
+    ingredients: [{ id: Date.now(), name: '', price: '', qtyBought: '', unit: '', usage: '', usageType: 'per_recipe' }],
+    electricity: { enabled: false, watts: '', unitPrice: '5', minutes: '', piecesPerBatch: '' },
+    boxConfig: { piecesPerBox: '', packagingCost: '', laborCost: '' }
   });
   const [costDetailsModal, setCostDetailsModal] = useState({ isOpen: false, profile: null });
 
@@ -242,7 +245,7 @@ export default function App() {
       cData.sort((a, b) => {
           const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
           const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-          return timeB - timeA; // เรียงจากเก่าไปใหม่
+          return timeB - timeA; 
       });
       setCostProfiles(cData);
       setLoading(false);
@@ -652,6 +655,79 @@ export default function App() {
   // ==========================================
   // 10. Cost Profiles Handlers (ระบบคำนวณต้นทุน)
   // ==========================================
+  
+  // Helpers สำหรับการคำนวณต้นทุนให้เหมือนใน Spreadsheet เป๊ะๆ
+  const calcIngCostPerPiece = (ing, yieldPieces) => {
+    const price = Number(ing.price) || 0;
+    const qtyBought = Number(ing.qtyBought) || 1; // ป้องกันหาร 0
+    const usage = Number(ing.usage) || 0;
+    const yPieces = Number(yieldPieces) || 1;
+    
+    const costPerUnit = price / qtyBought;
+    
+    // ถ้าตั้งค่าเป็น "ใช้ต่อ 1 ชิ้น" (เช่น ชีส 1 ชิ้นใช้ 4g) ไม่ต้องนำไปหารจำนวนชิ้นรวม
+    if (ing.usageType === 'per_piece') {
+        return costPerUnit * usage;
+    } 
+    // ถ้าตั้งค่าเป็น "ใช้ต่อสูตรรวม" (เช่น ผงหมัก 100g ต่อไก่ 1 กก. ที่ทำได้ 25 ชิ้น) นำไปหารจำนวนชิ้นรวม
+    else {
+        return (costPerUnit * usage) / yPieces;
+    }
+  };
+
+  const calcElectCostPerPiece = (elec) => {
+    if (!elec.enabled) return 0;
+    const watts = Number(elec.watts) || 0;
+    const unitPrice = Number(elec.unitPrice) || 0;
+    const mins = Number(elec.minutes) || 0;
+    const piecesPerBatch = Number(elec.piecesPerBatch) || 1; // ป้องกันหาร 0
+    
+    // สูตรคำนวณ: (วัตต์ / 1000) * (นาที / 60) * ค่าไฟต่อหน่วย
+    const costPerBatch = (watts / 1000) * (mins / 60) * unitPrice;
+    return costPerBatch / piecesPerBatch;
+  };
+
+  const generateCostSummary = (form) => {
+    const yieldP = Number(form.yieldPieces) || 1;
+    
+    let totalIngCostPerPiece = 0;
+    const ingDetails = form.ingredients.map(ing => {
+        const c = calcIngCostPerPiece(ing, yieldP);
+        totalIngCostPerPiece += c;
+        return { ...ing, costPerPiece: c };
+    });
+
+    const elePerPiece = calcElectCostPerPiece(form.electricity);
+    const totalPerPiece = totalIngCostPerPiece + elePerPiece;
+
+    const boxP = Number(form.boxConfig.piecesPerBox) || 1;
+    const packCost = Number(form.boxConfig.packagingCost) || 0;
+    const labCost = Number(form.boxConfig.laborCost) || 0;
+    
+    // ต้นทุนรวมต่อกล่อง = (ต้นทุนต่อชิ้น * จำนวนชิ้น) + ค่ากล่อง + ค่าแรง
+    const totalBoxCost = (totalPerPiece * boxP) + packCost + labCost;
+
+    return { 
+        ingDetails, 
+        totalIngCostPerPiece, 
+        elePerPiece, 
+        totalPerPiece, 
+        totalBoxCost 
+    };
+  };
+
+  const handleCostFieldChange = (field, value) => {
+      setCostForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleCostElectChange = (field, value) => {
+      setCostForm(prev => ({ ...prev, electricity: { ...prev.electricity, [field]: value } }));
+  };
+
+  const handleCostBoxChange = (field, value) => {
+      setCostForm(prev => ({ ...prev, boxConfig: { ...prev.boxConfig, [field]: value } }));
+  };
+
   const handleCostIngredientChange = (id, field, value) => {
     setCostForm(prev => ({
       ...prev,
@@ -662,7 +738,7 @@ export default function App() {
   const addCostIngredient = () => {
     setCostForm(prev => ({
       ...prev,
-      ingredients: [...prev.ingredients, { id: Date.now(), name: '', price: '', yield: '', usage: '' }]
+      ingredients: [...prev.ingredients, { id: Date.now(), name: '', price: '', qtyBought: '', unit: '', usage: '', usageType: 'per_recipe' }]
     }));
   };
 
@@ -673,28 +749,15 @@ export default function App() {
     }));
   };
 
-  const calculateIngredientCost = (ing) => {
-    const price = Number(ing.price) || 0;
-    const yieldAmt = Number(ing.yield) || 1; // ป้องกันหาร 0
-    const usage = Number(ing.usage) || 0;
-    if(yieldAmt <= 0) return 0;
-    return (price / yieldAmt) * usage;
-  };
-
-  const calculateTotalCost = (ingredients) => {
-    return ingredients.reduce((sum, ing) => sum + calculateIngredientCost(ing), 0);
-  };
-
   const handleSaveCostProfile = async (e) => {
     e.preventDefault();
     if (!isAdmin || !db) return;
     if (!costForm.name.trim()) return alert("กรุณาตั้งชื่อสูตรต้นทุน");
 
-    const totalCost = calculateTotalCost(costForm.ingredients);
+    const summary = generateCostSummary(costForm);
     const payload = {
-        name: costForm.name,
-        ingredients: costForm.ingredients,
-        totalCost: totalCost,
+        ...costForm,
+        summary,
         updatedAt: serverTimestamp()
     };
 
@@ -709,7 +772,6 @@ export default function App() {
             recordAction({ type: 'single', col: 'accounting_cost_profiles', docId: docRef.id, oldData: null, newData: payload });
         }
         setCostFormModal({ isOpen: false, mode: 'add', id: null });
-        setCostForm({ name: '', ingredients: [{ id: Date.now(), name: '', price: '', yield: '', usage: '' }] });
     } catch (err) {
         alert("บันทึกต้นทุนล้มเหลว: " + err.message);
     }
@@ -718,8 +780,11 @@ export default function App() {
   const openEditCostProfile = (profile) => {
     if (!isAdmin) return;
     setCostForm({
-        name: profile.name,
-        ingredients: profile.ingredients || []
+        name: profile.name || '',
+        yieldPieces: profile.yieldPieces || '',
+        ingredients: profile.ingredients || [],
+        electricity: profile.electricity || { enabled: false, watts: '', unitPrice: '5', minutes: '', piecesPerBatch: '' },
+        boxConfig: profile.boxConfig || { piecesPerBox: '', packagingCost: '', laborCost: '' }
     });
     setCostFormModal({ isOpen: true, mode: 'edit', id: profile.id });
   };
@@ -1237,12 +1302,12 @@ export default function App() {
           <button onClick={() => setIsCostSectionOpen(!isCostSectionOpen)} className="w-full p-4 bg-teal-50/50 hover:bg-teal-100/50 border-b border-teal-100 flex justify-between items-center transition-colors duration-200">
             <div className="flex items-center gap-2">
                <PieChart className="w-5 h-5 text-teal-600" />
-               <h3 className="font-semibold text-teal-800">ระบบคำนวณต้นทุน/กล่อง (จำลองสูตร)</h3>
+               <h3 className="font-semibold text-teal-800">ระบบคำนวณต้นทุน (สูตร)</h3>
             </div>
             <div className="flex items-center gap-2">
                {isAdmin && (
-                 <span onClick={(e) => { e.stopPropagation(); setCostFormModal({ isOpen: true, mode: 'add', id: null }); setCostForm({ name: '', ingredients: [{ id: Date.now(), name: '', price: '', yield: '', usage: '' }] }); }} className="text-xs font-bold text-teal-700 bg-white px-3 py-1 rounded-full shadow-sm hover:bg-teal-50 active:scale-90 transition-all flex items-center gap-1 border border-teal-100">
-                   <Plus className="w-3 h-3"/> เพิ่มสูตร
+                 <span onClick={(e) => { e.stopPropagation(); setCostFormModal({ isOpen: true, mode: 'add', id: null }); setCostForm({ name: '', yieldPieces: '', ingredients: [{ id: Date.now(), name: '', price: '', qtyBought: '', unit: '', usage: '', usageType: 'per_recipe' }], electricity: { enabled: false, watts: '', unitPrice: '5', minutes: '', piecesPerBatch: '' }, boxConfig: { piecesPerBox: '', packagingCost: '', laborCost: '' } }); }} className="text-xs font-bold text-teal-700 bg-white px-3 py-1.5 rounded-full shadow-sm hover:bg-teal-50 active:scale-90 transition-all flex items-center gap-1 border border-teal-100">
+                   <Plus className="w-3 h-3"/> เพิ่มสูตรใหม่
                  </span>
                )}
                <ChevronDown className={`w-5 h-5 text-teal-400 transition-transform duration-300 ease-out ${isCostSectionOpen ? 'rotate-180' : ''}`} />
@@ -1260,7 +1325,7 @@ export default function App() {
                          <div className="flex justify-between items-start">
                             <div className="pr-6">
                                <span className="font-bold text-gray-800 text-sm block line-clamp-2 leading-snug">{profile.name}</span>
-                               <span className="text-xs text-gray-500 mt-1 block">{profile.ingredients?.length || 0} วัตถุดิบ</span>
+                               <span className="text-xs text-gray-500 mt-1 block">{profile.ingredients?.length || 0} วัตถุดิบหลัก</span>
                             </div>
                             <button onClick={() => setCostDetailsModal({ isOpen: true, profile })} className="absolute top-3 right-3 text-teal-400 hover:text-teal-600 transition-all duration-200 p-1 active:scale-90" title="ดูรายละเอียดต้นทุน">
                                <Info className="w-5 h-5" />
@@ -1269,7 +1334,7 @@ export default function App() {
                          
                          <div className="mt-2 bg-gray-50 rounded-xl p-3 border border-gray-100 text-center transition-colors duration-300 group-hover:bg-teal-50/30">
                             <span className="text-xs text-gray-500 block mb-0.5">ต้นทุนรวมสุทธิ/กล่อง</span>
-                            <span className="text-xl font-bold text-teal-600">฿{(profile.totalCost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                            <span className="text-xl font-bold text-teal-600">฿{(profile.summary?.totalBoxCost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                          </div>
                          
                          {isAdmin && (
@@ -1524,101 +1589,230 @@ export default function App() {
              <button onClick={() => setCostFormModal(prev => ({ ...prev, isOpen: false }))} className="text-teal-400 hover:text-teal-600 p-1.5 bg-white rounded-full shadow-sm active:scale-90 transition-all"><X className="w-4 h-4"/></button>
           </div>
 
-          <form onSubmit={handleSaveCostProfile} className="flex flex-col h-full max-h-[70vh]">
+          <form onSubmit={handleSaveCostProfile} className="flex flex-col h-full max-h-[85vh]">
               <div className={`overflow-y-auto flex-1 p-4 md:p-6 bg-gray-50/30 ${scrollbarClass}`}>
-                 <div className="mb-6">
-                    <label className="block text-sm font-bold text-gray-700 mb-1">ชื่อสูตรต้นทุน (เช่น เมนูไก่ทอด 6 ชิ้น)</label>
-                    <input 
-                      type="text" required value={costForm.name} onChange={e => setCostForm({...costForm, name: e.target.value})}
-                      className="w-full p-3 h-[52px] border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
-                      placeholder="ตั้งชื่อสูตร..."
-                    />
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div className="md:col-span-1">
+                       <label className="block text-sm font-bold text-gray-700 mb-1">ชื่อสูตรต้นทุน</label>
+                       <input 
+                         type="text" required value={costForm.name} onChange={e => handleCostFieldChange('name', e.target.value)}
+                         className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
+                         placeholder="เช่น เมนูไก่ทอดชีส 5 ชิ้น"
+                       />
+                    </div>
+                    <div className="md:col-span-1">
+                       <label className="block text-sm font-bold text-gray-700 mb-1">ผลผลิตที่ได้จาก 1 สูตร</label>
+                       <div className="flex gap-2">
+                           <input 
+                             type="number" min="1" step="any" required value={costForm.yieldPieces} onChange={e => handleCostFieldChange('yieldPieces', e.target.value)}
+                             className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm text-center font-bold text-teal-700"
+                             placeholder="25"
+                           />
+                           <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 flex items-center justify-center text-sm font-medium text-gray-600">ชิ้น</div>
+                       </div>
+                    </div>
                  </div>
 
-                 <div className="space-y-4">
-                    <div className="flex justify-between items-end border-b pb-2">
-                       <h4 className="font-bold text-gray-700">วัตถุดิบที่ใช้</h4>
+                 {/* ส่วนที่ 2: วัตถุดิบ */}
+                 <div className="space-y-4 mb-8">
+                    <div className="flex justify-between items-end border-b border-gray-200 pb-2">
+                       <h4 className="font-bold text-gray-700">วัตถุดิบ (คิดต่อชิ้น)</h4>
                        <button type="button" onClick={addCostIngredient} className="text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100 hover:bg-teal-100 active:scale-95 transition-all flex items-center gap-1">
                           <Plus className="w-3 h-3"/> เพิ่มวัตถุดิบ
                        </button>
                     </div>
 
-                    {costForm.ingredients.map((ing, idx) => (
-                       <div key={ing.id} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm relative pt-6 md:pt-4">
+                    {costForm.ingredients.map((ing) => (
+                       <div key={ing.id} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm relative group">
                           {costForm.ingredients.length > 1 && (
-                            <button type="button" onClick={() => removeCostIngredient(ing.id)} className="absolute top-2 right-2 md:top-4 md:right-4 text-gray-400 hover:text-red-500 p-1 active:scale-90 transition-all">
+                            <button type="button" onClick={() => removeCostIngredient(ing.id)} className="absolute top-3 right-3 text-gray-300 hover:text-red-500 p-1 bg-white rounded-md active:scale-90 transition-all z-10">
                                <Trash2 className="w-4 h-4"/>
-                            </button>
+                           </button>
                           )}
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                              <div className="md:col-span-4">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ชื่อวัตถุดิบ</label>
-                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ปีกเต็มไก่ (ถุง 1 กก.)"/>
+                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ไก่สด, ผงหมัก"/>
                              </div>
-                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">ราคาซื้อมา (฿)</label>
-                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 appearance-none" placeholder="เช่น 80"/>
+                             <div className="md:col-span-3">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">ราคาที่ซื้อมา (฿)</label>
+                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="฿"/>
                              </div>
-                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">ได้ของกี่ชิ้น/หน่วย?</label>
-                                <input type="number" required min="0.01" step="any" value={ing.yield} onChange={e => handleCostIngredientChange(ing.id, 'yield', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 appearance-none" placeholder="เช่น 12"/>
+                             <div className="md:col-span-3">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">ปริมาณที่ได้</label>
+                                <div className="flex gap-1">
+                                    <input type="number" required min="0.01" step="any" value={ing.qtyBought} onChange={e => handleCostIngredientChange(ing.id, 'qtyBought', e.target.value)} className="w-2/3 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 text-center" placeholder="จำนวน"/>
+                                    <input type="text" value={ing.unit} onChange={e => handleCostIngredientChange(ing.id, 'unit', e.target.value)} className="w-1/3 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white text-center" placeholder="หน่วย"/>
+                                </div>
                              </div>
-                             <div>
-                                <label className="block text-xs font-semibold text-gray-500 mb-1">ใช้ต่อ 1 กล่อง</label>
-                                <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 appearance-none text-teal-700 font-bold" placeholder="เช่น 6"/>
+                             <div className="md:col-span-2 text-right pb-2 hidden md:block">
+                                <span className="text-[10px] text-gray-400 block">ต้นทุน/หน่วย</span>
+                                <span className="text-xs font-bold text-teal-600 border-b border-dashed border-teal-200 pb-0.5">
+                                   ฿{( (Number(ing.price)||0) / (Number(ing.qtyBought)||1) ).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}
+                                </span>
                              </div>
-                             <div className="flex flex-col justify-end pb-1 text-right">
-                                <span className="text-xs text-gray-400">ต้นทุนวัตถุดิบนี้</span>
-                                <span className="font-bold text-teal-600">฿{calculateIngredientCost(ing).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                             
+                             <div className="md:col-span-7 mt-1 md:mt-0">
+                                <label className="block text-xs font-semibold text-gray-500 mb-1">ปริมาณที่ใช้</label>
+                                <div className="flex gap-2">
+                                    <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-1/2 p-2.5 border border-teal-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-teal-50/30 text-teal-700 font-bold text-center" placeholder="จำนวนที่ใช้"/>
+                                    <select value={ing.usageType} onChange={e => handleCostIngredientChange(ing.id, 'usageType', e.target.value)} className="w-1/2 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white">
+                                        <option value="per_recipe">ต่อ {costForm.yieldPieces || 'X'} ชิ้น (สูตรรวม)</option>
+                                        <option value="per_piece">ต่อ 1 ชิ้น</option>
+                                    </select>
+                                </div>
+                             </div>
+                             
+                             <div className="md:col-span-5 flex flex-col justify-end text-right bg-gray-50 rounded-lg p-2 border border-gray-100 mt-2 md:mt-0 h-full">
+                                <span className="text-[10px] text-gray-500 block mb-0.5">ต้นทุนเฉพาะชิ้นนี้ =</span>
+                                <span className="font-bold text-teal-600 text-sm">
+                                   ฿{calcIngCostPerPiece(ing, costForm.yieldPieces).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}
+                                </span>
                              </div>
                           </div>
                        </div>
                     ))}
                  </div>
-              </div>
-              <div className="p-5 border-t border-gray-100 bg-white rounded-b-3xl shrink-0 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                 <div className="w-full sm:w-auto text-center sm:text-left bg-teal-50 px-4 py-2 rounded-xl border border-teal-100">
-                    <span className="text-sm font-bold text-gray-600 mr-2">ต้นทุนรวมสุทธิ/กล่อง:</span>
-                    <span className="text-xl font-bold text-teal-700">฿{calculateTotalCost(costForm.ingredients).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+
+                 {/* Section 3: ไฟฟ้า/แก๊ส */}
+                 <div className="space-y-3 mb-8 bg-orange-50/50 p-4 rounded-2xl border border-orange-100">
+                    <div className="flex justify-between items-center border-b border-orange-200 pb-2">
+                       <h4 className="font-bold text-orange-800 flex items-center gap-1.5"><Zap className="w-4 h-4"/> ค่าพลังงาน/ค่าไฟ (ต่อการทำ 1 รอบ)</h4>
+                       <label className="flex items-center cursor-pointer gap-2">
+                         <span className="text-xs font-semibold text-orange-600">เปิดใช้งาน</span>
+                         <input type="checkbox" checked={costForm.electricity.enabled} onChange={e => handleCostElectChange('enabled', e.target.checked)} className="w-4 h-4 text-orange-600 focus:ring-orange-500 rounded"/>
+                       </label>
+                    </div>
+                    {costForm.electricity.enabled && (
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-in fade-in duration-300">
+                          <div>
+                             <label className="block text-xs font-semibold text-gray-500 mb-1">กำลังไฟ (วัตต์)</label>
+                             <input type="number" min="0" value={costForm.electricity.watts} onChange={e => handleCostElectChange('watts', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 1200"/>
+                          </div>
+                          <div>
+                             <label className="block text-xs font-semibold text-gray-500 mb-1">ค่าไฟ (บาท/หน่วย)</label>
+                             <input type="number" min="0" step="any" value={costForm.electricity.unitPrice} onChange={e => handleCostElectChange('unitPrice', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 5"/>
+                          </div>
+                          <div>
+                             <label className="block text-xs font-semibold text-gray-500 mb-1">เวลาทอด (นาที)</label>
+                             <input type="number" min="0" value={costForm.electricity.minutes} onChange={e => handleCostElectChange('minutes', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 20"/>
+                          </div>
+                          <div>
+                             <label className="block text-xs font-semibold text-gray-500 mb-1">ทอดได้กี่ชิ้น/รอบ?</label>
+                             <input type="number" min="1" value={costForm.electricity.piecesPerBatch} onChange={e => handleCostElectChange('piecesPerBatch', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 15"/>
+                          </div>
+                       </div>
+                    )}
                  </div>
-                 <div className="flex gap-2 w-full sm:w-auto">
-                    <button type="button" onClick={() => setCostFormModal(prev => ({ ...prev, isOpen: false }))} className="flex-1 sm:flex-none py-3 px-6 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium active:scale-[0.97] transition-all">ยกเลิก</button>
-                    <button type="submit" className="flex-1 sm:flex-none py-3 px-6 text-white bg-teal-600 hover:bg-teal-700 rounded-xl text-sm font-bold active:scale-[0.97] transition-all shadow-md">บันทึกสูตร</button>
+
+                 {/* Section 4: ลงกล่อง */}
+                 <div className="space-y-3 bg-purple-50/50 p-4 rounded-2xl border border-purple-100">
+                    <h4 className="font-bold text-purple-800 flex items-center gap-1.5 border-b border-purple-200 pb-2"><Box className="w-4 h-4"/> การบรรจุลงกล่อง</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                           <label className="block text-xs font-semibold text-gray-500 mb-1">1 กล่อง ใส่กี่ชิ้น?</label>
+                           <input type="number" min="1" required value={costForm.boxConfig.piecesPerBox} onChange={e => handleCostBoxChange('piecesPerBox', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-700 text-center" placeholder="เช่น 5"/>
+                        </div>
+                        <div>
+                           <label className="block text-xs font-semibold text-gray-500 mb-1">ค่ากล่อง/ซอส/แพ็คเกจ (฿)</label>
+                           <input type="number" min="0" step="any" value={costForm.boxConfig.packagingCost} onChange={e => handleCostBoxChange('packagingCost', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
+                        </div>
+                        <div>
+                           <label className="block text-xs font-semibold text-gray-500 mb-1">ค่าแรงแพ็ค (฿/กล่อง)</label>
+                           <input type="number" min="0" step="any" value={costForm.boxConfig.laborCost} onChange={e => handleCostBoxChange('laborCost', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
+                        </div>
+                    </div>
+                 </div>
+
+              </div>
+              
+              {/* Footer Summary */}
+              <div className="p-4 border-t border-gray-100 bg-white rounded-b-3xl shrink-0 flex flex-col md:flex-row justify-between items-center gap-4 shadow-[0_-4px_10px_-1px_rgba(0,0,0,0.05)]">
+                 <div className="w-full md:w-auto grid grid-cols-2 md:flex md:items-center gap-3">
+                    <div className="text-center md:text-left bg-gray-50 px-3 py-2 rounded-xl border border-gray-100">
+                        <span className="text-[10px] text-gray-500 block leading-tight">ต้นทุนต่อ 1 ชิ้น</span>
+                        <span className="text-sm font-bold text-gray-700">฿{generateCostSummary(costForm).totalPerPiece.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                    </div>
+                    <div className="text-center md:text-left bg-teal-50 px-4 py-2 rounded-xl border border-teal-200 shadow-sm">
+                        <span className="text-[10px] text-teal-600 font-bold block leading-tight">ต้นทุนรวมสุทธิ (ต่อกล่อง)</span>
+                        <span className="text-xl font-bold text-teal-700 leading-none">฿{generateCostSummary(costForm).totalBoxCost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                    </div>
+                 </div>
+                 <div className="flex gap-2 w-full md:w-auto">
+                    <button type="button" onClick={() => setCostFormModal(prev => ({ ...prev, isOpen: false }))} className="flex-1 md:flex-none py-3 px-6 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium active:scale-[0.97] transition-all">ยกเลิก</button>
+                    <button type="submit" className="flex-1 md:flex-none py-3 px-6 text-white bg-teal-600 hover:bg-teal-700 rounded-xl text-sm font-bold active:scale-[0.97] transition-all shadow-md">บันทึกสูตร</button>
                  </div>
               </div>
           </form>
       </AnimatedModal>
 
-      {/* Modal ดูรายละเอียดสูตรต้นทุน */}
+      {/* Modal ดูรายละเอียดสูตรต้นทุน (ใบแจ้งหนี้แบบย่อ) */}
       <AnimatedModal isOpen={costDetailsModal.isOpen} onClose={() => setCostDetailsModal(prev => ({ ...prev, isOpen: false }))} pClass="p-0">
           <div className="p-4 border-b border-teal-100 flex justify-between items-center bg-teal-50/50 rounded-t-3xl shrink-0">
              <h3 className="text-lg font-bold flex items-center gap-2 text-teal-900 truncate pr-4">
-               <ClipboardList className="text-teal-500 w-5 h-5 shrink-0" /> {costDetailsModal.profile?.name}
+               <ClipboardList className="text-teal-500 w-5 h-5 shrink-0" /> รายละเอียดต้นทุน
              </h3>
              <button onClick={() => setCostDetailsModal(prev => ({ ...prev, isOpen: false }))} className="text-teal-400 hover:text-teal-600 p-1.5 bg-white rounded-full shadow-sm active:scale-90 transition-all shrink-0"><X className="w-4 h-4"/></button>
           </div>
           
-          <div className={`overflow-y-auto max-h-[60vh] flex-1 p-4 bg-gray-50/50 ${scrollbarClass}`}>
-             <div className="space-y-3">
-               {costDetailsModal.profile?.ingredients?.map((ing, idx) => (
-                 <div key={idx} className="p-3.5 rounded-xl border border-l-4 border-l-teal-400 bg-white flex flex-col gap-2 shadow-sm hover:shadow-md transition-all duration-200">
-                    <div className="flex justify-between items-start">
-                       <span className="font-bold text-gray-800 text-sm">{ing.name}</span>
-                       <span className="font-bold text-teal-600 text-sm">฿{calculateIngredientCost(ing).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+          <div className={`overflow-y-auto max-h-[65vh] flex-1 p-5 bg-gray-50/50 ${scrollbarClass}`}>
+             {costDetailsModal.profile && (
+                 <div className="space-y-5">
+                    {/* Header Info */}
+                    <div className="text-center pb-4 border-b border-gray-200 border-dashed">
+                       <h2 className="text-xl font-bold text-gray-800 mb-1">{costDetailsModal.profile.name}</h2>
+                       <span className="text-xs bg-teal-100 text-teal-700 px-2 py-1 rounded-md font-medium">ทำได้ {costDetailsModal.profile.yieldPieces || 1} ชิ้น/สูตร</span>
                     </div>
-                    <div className="flex justify-between items-center text-xs text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-100">
-                       <span>ซื้อ ฿{ing.price} (ได้ {ing.yield})</span>
-                       <span>ใช้ {ing.usage} / กล่อง</span>
+
+                    {/* ต้นทุนต่อชิ้น */}
+                    <div>
+                        <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><ChefHat className="w-4 h-4 text-gray-400"/> สรุปต้นทุนต่อ 1 ชิ้น</h4>
+                        <div className="space-y-2 bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                            {costDetailsModal.profile.summary?.ingDetails?.map((ing, idx) => (
+                                <div key={idx} className="flex justify-between items-center text-sm py-1 border-b border-gray-50 last:border-0">
+                                    <span className="text-gray-600">{ing.name}</span>
+                                    <span className="font-semibold text-gray-800">฿{(ing.costPerPiece || 0).toFixed(3)}</span>
+                                </div>
+                            ))}
+                            {costDetailsModal.profile.electricity?.enabled && (
+                                <div className="flex justify-between items-center text-sm py-1 border-b border-gray-50 last:border-0">
+                                    <span className="text-orange-600 flex items-center gap-1"><Zap className="w-3 h-3"/> ค่าไฟฟ้า/แก๊ส</span>
+                                    <span className="font-semibold text-orange-600">฿{(costDetailsModal.profile.summary?.elePerPiece || 0).toFixed(3)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center text-sm pt-2 mt-1 border-t border-gray-200">
+                                <span className="font-bold text-gray-800">รวมต้นทุน 1 ชิ้น</span>
+                                <span className="font-bold text-teal-600">฿{(costDetailsModal.profile.summary?.totalPerPiece || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ต้นทุนต่อกล่อง */}
+                    <div>
+                        <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1.5"><Box className="w-4 h-4 text-gray-400"/> สรุปต้นทุนลงกล่อง</h4>
+                        <div className="space-y-2 bg-purple-50/30 p-3 rounded-xl border border-purple-100 shadow-sm">
+                            <div className="flex justify-between items-center text-sm py-1">
+                                <span className="text-gray-600">ของ {costDetailsModal.profile.boxConfig?.piecesPerBox || 1} ชิ้น</span>
+                                <span className="font-semibold text-gray-800">฿{((costDetailsModal.profile.summary?.totalPerPiece || 0) * (Number(costDetailsModal.profile.boxConfig?.piecesPerBox) || 1)).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm py-1">
+                                <span className="text-gray-600">แพ็คเกจจิ้ง/กล่อง/ซอส</span>
+                                <span className="font-semibold text-gray-800">฿{Number(costDetailsModal.profile.boxConfig?.packagingCost || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm py-1">
+                                <span className="text-gray-600">ค่าแรงแพ็ค</span>
+                                <span className="font-semibold text-gray-800">฿{Number(costDetailsModal.profile.boxConfig?.laborCost || 0).toLocaleString()}</span>
+                            </div>
+                        </div>
                     </div>
                  </div>
-               ))}
-             </div>
+             )}
           </div>
           
-          <div className="p-5 border-t border-gray-100 bg-white rounded-b-3xl shrink-0 flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-              <span className="text-base font-bold text-gray-700">ต้นทุนรวมทั้งหมด:</span>
-              <span className="text-2xl font-bold text-teal-600">
-                 ฿{(costDetailsModal.profile?.totalCost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+          <div className="p-5 border-t border-teal-200 bg-teal-50 rounded-b-3xl shrink-0 flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+              <span className="text-sm font-bold text-teal-800">ต้นทุนรวมสุทธิ / กล่อง:</span>
+              <span className="text-2xl font-bold text-teal-700">
+                 ฿{(costDetailsModal.profile?.summary?.totalBoxCost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
               </span>
           </div>
       </AnimatedModal>
