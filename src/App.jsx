@@ -695,22 +695,22 @@ export default function App() {
         
         {/* Dashboard */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500 flex flex-col justify-between">
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500 flex flex-col justify-between items-center text-center">
             <p className="text-xs md:text-sm text-gray-500 font-medium">รายรับรวม</p>
             <p className="text-lg md:text-2xl font-bold text-green-600">฿{totals.income.toLocaleString()}</p>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-rose-500 flex flex-col justify-between">
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-rose-500 flex flex-col justify-between items-center text-center">
             <p className="text-xs md:text-sm text-gray-500 font-medium">รายจ่ายรวม</p>
             <p className="text-lg md:text-2xl font-bold text-rose-600">฿{totals.expense.toLocaleString()}</p>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex flex-col justify-between col-span-2 md:col-span-1">
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex flex-col justify-between items-center text-center col-span-2 md:col-span-1">
             <p className="text-xs md:text-sm text-gray-500 font-medium">ยอดคงเหลือสุทธิ</p>
             <p className="text-lg md:text-2xl font-bold text-blue-600">฿{balance.toLocaleString()}</p>
           </div>
 
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-purple-500 flex flex-col justify-between">
-            <p className="text-xs md:text-sm text-gray-500 font-medium">มูลค่าทุนร้าน</p>
-            <div className="flex items-center">
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-purple-500 flex flex-col justify-between items-center text-center">
+            <p className="text-xs md:text-sm text-gray-500 font-medium w-full mb-1">มูลค่าทุนร้าน</p>
+            <div className="flex items-center justify-center w-full">
               <span className="text-lg md:text-2xl font-bold text-purple-600 mr-1">฿</span>
               {isAdmin ? (
                 <input 
@@ -718,7 +718,7 @@ export default function App() {
                   value={shopCapital}
                   onChange={(e) => setShopCapital(e.target.value === '' ? '' : Number(e.target.value))}
                   onBlur={(e) => handleCapitalUpdate(e.target.value)}
-                  className="text-lg md:text-2xl font-bold text-purple-600 bg-transparent outline-none w-full border-b border-dashed border-gray-300 focus:border-purple-500"
+                  className="text-lg md:text-2xl font-bold text-purple-600 bg-transparent outline-none w-24 md:w-32 text-center border-b border-dashed border-gray-300 focus:border-purple-500"
                   placeholder="0"
                 />
               ) : (
@@ -726,11 +726,11 @@ export default function App() {
               )}
             </div>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-orange-500 flex flex-col justify-between">
+          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-orange-500 flex flex-col justify-between items-center text-center">
             <p className="text-xs md:text-sm text-gray-500 font-medium">ค่าแรงรอจ่ายรวม</p>
             <p className="text-lg md:text-2xl font-bold text-orange-600">฿{totalPendingWages.toLocaleString()}</p>
           </div>
-          <div className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${netProfitLoss >= 0 ? 'border-teal-500' : 'border-red-600'} flex flex-col justify-between col-span-2 md:col-span-1`}>
+          <div className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${netProfitLoss >= 0 ? 'border-teal-500' : 'border-red-600'} flex flex-col justify-between items-center text-center col-span-2 md:col-span-1`}>
             <p className="text-xs md:text-sm text-gray-500 font-medium">สถานะร้าน (กำไร/ขาดทุน)</p>
             <p className={`text-lg md:text-2xl font-bold ${netProfitLoss >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
               {netProfitLoss >= 0 ? '+' : ''}฿{netProfitLoss.toLocaleString()}
