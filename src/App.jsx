@@ -10,7 +10,7 @@ import {
   PlusCircle, MinusCircle, Wallet, Trash2, Edit2, 
   X, Check, Filter, Users, UserPlus, Banknote, Settings,
   LogOut, Lock, Calculator, ChefHat, ShoppingBag, History,
-  Undo, Redo, ChevronDown, ChevronUp, Info, Truck, Camera, Image as ImageIcon
+  Undo, Redo, ChevronDown, Info, Truck, Camera, Image as ImageIcon
 } from 'lucide-react';
 
 // ==========================================
@@ -290,7 +290,7 @@ export default function App() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // จำกัด 5MB
+      if (file.size > 5 * 1024 * 1024) { 
         alert("ไฟล์ใหญ่เกินไป (ต้องไม่เกิน 5MB)");
         return;
       }
@@ -309,12 +309,10 @@ export default function App() {
     setIsUploading(true);
     let finalReceiptUrl = editingId ? records.find(r => r.id === editingId)?.receiptUrl || null : null;
 
-    // ถ้ายกเลิกรูปที่มีอยู่
     if (editingId && !receiptPreview) {
         finalReceiptUrl = null; 
     }
 
-    // ถ้าอัปโหลดรูปใหม่
     if (receiptFile) {
         try {
             const storageRef = ref(storage, `receipts/${Date.now()}_${receiptFile.name}`);
@@ -348,7 +346,6 @@ export default function App() {
         recordAction({ type: 'single', col: 'accounting_records', docId: docRef.id, oldData: null, newData: payload });
         await logAction('CREATE', { id: docRef.id, ...payload });
       }
-      // เคลียร์ฟอร์ม
       setFormData({ type: formData.type, amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
       setReceiptFile(null);
       setReceiptPreview('');
@@ -660,34 +657,34 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
       {/* Header */}
-      <div className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-20">
+      <div className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-20 transition-all duration-300">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           
           <h1 className="text-lg md:text-xl font-bold flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="flex items-center gap-2">
               <Wallet className="w-6 h-6" /> ระบบบัญชี
             </span>
-            {!isAdmin && <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full font-medium tracking-wide border border-white/10">โหมดผู้เยี่ยมชม</span>}
+            {!isAdmin && <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full font-medium tracking-wide border border-white/10 shadow-sm">โหมดผู้เยี่ยมชม</span>}
             {isAdmin && <span className="bg-green-400 text-white text-xs px-3 py-1 rounded-full font-medium shadow-sm tracking-wide">โหมดแอดมิน</span>}
           </h1>
           
           <div className="w-full sm:w-auto flex justify-end gap-2">
             {isAdmin && (
               <>
-                <button onClick={handleUndo} disabled={undoStack.length === 0} className={`p-1.5 md:p-2 rounded-md flex items-center transition ${undoStack.length > 0 ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-blue-500 text-blue-400 cursor-not-allowed'}`} title="ย้อนกลับ (Undo)">
+                <button onClick={handleUndo} disabled={undoStack.length === 0} className={`p-1.5 md:p-2 rounded-md flex items-center transition-all duration-200 active:scale-[0.95] ${undoStack.length > 0 ? 'bg-blue-700 text-white hover:bg-blue-800 hover:shadow-sm' : 'bg-blue-500 text-blue-400 cursor-not-allowed'}`} title="ย้อนกลับ (Undo)">
                   <Undo size={16} />
                 </button>
-                <button onClick={handleRedo} disabled={redoStack.length === 0} className={`p-1.5 md:p-2 rounded-md flex items-center transition mr-1 ${redoStack.length > 0 ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-blue-500 text-blue-400 cursor-not-allowed'}`} title="ทำซ้ำ (Redo)">
+                <button onClick={handleRedo} disabled={redoStack.length === 0} className={`p-1.5 md:p-2 rounded-md flex items-center transition-all duration-200 active:scale-[0.95] mr-1 ${redoStack.length > 0 ? 'bg-blue-700 text-white hover:bg-blue-800 hover:shadow-sm' : 'bg-blue-500 text-blue-400 cursor-not-allowed'}`} title="ทำซ้ำ (Redo)">
                   <Redo size={16} />
                 </button>
               </>
             )}
             {!isAdmin ? (
-              <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1.5 bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded-lg text-sm font-medium transition shadow-sm">
+              <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-1.5 bg-gray-900 hover:bg-black text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 active:scale-[0.97] shadow-sm">
                  <Lock size={14} /> เข้าระบบแก้ไข
               </button>
             ) : (
-              <button onClick={handleLogout} className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white border border-white/30 px-3 py-1.5 rounded-lg text-sm font-medium transition">
+              <button onClick={handleLogout} className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white border border-white/30 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 active:scale-[0.97]">
                  <LogOut size={14} /> ออกจากระบบ
               </button>
             )}
@@ -699,22 +696,22 @@ export default function App() {
         
         {/* Dashboard */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500 flex flex-col justify-between items-center text-center">
+          <div className="bg-white p-4 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 border-green-500 flex flex-col justify-between items-center text-center">
             <p className="text-xs md:text-sm text-gray-500 font-medium">รายรับรวม</p>
             <p className="text-lg md:text-2xl font-bold text-green-600">฿{totals.income.toLocaleString()}</p>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-rose-500 flex flex-col justify-between items-center text-center">
+          <div className="bg-white p-4 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 border-rose-500 flex flex-col justify-between items-center text-center">
             <p className="text-xs md:text-sm text-gray-500 font-medium">รายจ่ายรวม</p>
             <p className="text-lg md:text-2xl font-bold text-rose-600">฿{totals.expense.toLocaleString()}</p>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 flex flex-col justify-between items-center text-center col-span-2 md:col-span-1">
+          <div className="bg-white p-4 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 border-blue-500 flex flex-col justify-between items-center text-center col-span-2 md:col-span-1">
             <p className="text-xs md:text-sm text-gray-500 font-medium">ยอดคงเหลือสุทธิ</p>
             <p className="text-lg md:text-2xl font-bold text-blue-600">฿{balance.toLocaleString()}</p>
           </div>
 
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-purple-500 flex flex-col justify-between items-center text-center">
+          <div className="bg-white p-4 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 border-purple-500 flex flex-col justify-between items-center text-center">
             <p className="text-xs md:text-sm text-gray-500 font-medium w-full mb-1">มูลค่าทุนร้าน</p>
-            <div className="flex items-center justify-center w-full">
+            <div className="flex items-center justify-center w-full transition-all duration-300">
               <span className="text-lg md:text-2xl font-bold text-purple-600 mr-1">฿</span>
               {isAdmin ? (
                 <input 
@@ -722,7 +719,7 @@ export default function App() {
                   value={shopCapital}
                   onChange={(e) => setShopCapital(e.target.value === '' ? '' : Number(e.target.value))}
                   onBlur={(e) => handleCapitalUpdate(e.target.value)}
-                  className="text-lg md:text-2xl font-bold text-purple-600 bg-transparent outline-none w-24 md:w-32 text-center border-b border-dashed border-gray-300 focus:border-purple-500"
+                  className="text-lg md:text-2xl font-bold text-purple-600 bg-transparent outline-none w-24 md:w-32 text-center border-b border-dashed border-gray-300 focus:border-purple-500 transition-colors duration-300"
                   placeholder="0"
                 />
               ) : (
@@ -730,11 +727,11 @@ export default function App() {
               )}
             </div>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-orange-500 flex flex-col justify-between items-center text-center">
+          <div className="bg-white p-4 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 border-orange-500 flex flex-col justify-between items-center text-center">
             <p className="text-xs md:text-sm text-gray-500 font-medium">ค่าแรงรอจ่ายรวม</p>
             <p className="text-lg md:text-2xl font-bold text-orange-600">฿{totalPendingWages.toLocaleString()}</p>
           </div>
-          <div className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${netProfitLoss >= 0 ? 'border-teal-500' : 'border-red-600'} flex flex-col justify-between items-center text-center col-span-2 md:col-span-1`}>
+          <div className={`bg-white p-4 rounded-xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 ${netProfitLoss >= 0 ? 'border-teal-500' : 'border-red-600'} flex flex-col justify-between items-center text-center col-span-2 md:col-span-1`}>
             <p className="text-xs md:text-sm text-gray-500 font-medium">สถานะร้าน (กำไร/ขาดทุน)</p>
             <p className={`text-lg md:text-2xl font-bold ${netProfitLoss >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
               {netProfitLoss >= 0 ? '+' : ''}฿{netProfitLoss.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
@@ -743,7 +740,7 @@ export default function App() {
         </div>
 
         {/* ระบบ Face Card ID หุ้นส่วน / จ่ายค่าแรง */}
-        <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+        <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 transition-all duration-300">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
               <h2 className="text-base md:text-lg font-semibold text-gray-800 flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-500" /> จัดการค่าแรง / หุ้นส่วน
@@ -751,7 +748,7 @@ export default function App() {
               {isAdmin && (
                 <button 
                   onClick={() => setPartnerModal({ isOpen: true, mode: 'add', data: null, value: '' })}
-                  className="flex items-center gap-1.5 text-sm bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition w-full sm:w-auto justify-center"
+                  className="flex items-center gap-1.5 text-sm bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-all duration-200 active:scale-[0.97] w-full sm:w-auto justify-center"
                 >
                   <UserPlus className="w-4 h-4" /> เพิ่มรายชื่อ
                 </button>
@@ -766,23 +763,23 @@ export default function App() {
                 const totalAmount = (partner.pendingWage || 0) + dividendPerPerson;
 
                 return (
-                <div key={partner.id} className="border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow bg-white relative group">
+                <div key={partner.id} className="border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-3 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white relative group">
                   <button 
                      onClick={() => setPartnerDetailsModal({ isOpen: true, partner })} 
-                     className="absolute top-2 right-2 text-blue-300 hover:text-blue-600 transition-colors p-1"
+                     className="absolute top-2 right-2 text-blue-300 hover:text-blue-600 transition-colors p-1 active:scale-90"
                      title="ดูรายละเอียดการได้เงิน"
                   >
                      <Info className="w-5 h-5" />
                   </button>
 
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center shadow-inner mt-2 shrink-0">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center shadow-inner mt-2 shrink-0 transition-transform duration-300 group-hover:scale-105">
                     <Users className="w-6 h-6 text-gray-500" />
                   </div>
                   
                   <div className="text-center w-full mt-1">
                       <span className="font-bold text-gray-800 text-sm block truncate">{partner.name}</span>
                       
-                      <div className="bg-gray-50 rounded-lg p-2 mt-2 border border-gray-100 w-full text-left">
+                      <div className="bg-gray-50 rounded-lg p-2 mt-2 border border-gray-100 w-full text-left transition-colors duration-300 group-hover:bg-blue-50/50">
                           <div className="flex justify-between items-center text-[11px] md:text-xs mb-1">
                               <span className="text-gray-500">ค่าแรงรอจ่าย:</span>
                               <span className={`font-semibold ${partner.pendingWage > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
@@ -808,14 +805,14 @@ export default function App() {
                     <div className="w-full flex flex-col gap-2 mt-1">
                         <button 
                           onClick={() => setPartnerModal({ isOpen: true, mode: 'setWage', data: partner, value: partner.pendingWage || '' })}
-                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-50 transition shadow-sm"
+                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-50 active:scale-[0.98] transition-all duration-200 shadow-sm"
                         >
                           <Settings className="w-3.5 h-3.5" /> ตั้งยอดค่าแรง
                         </button>
                         <button 
                           onClick={() => handlePayWage(partner)}
                           disabled={!partner.pendingWage || partner.pendingWage <= 0}
-                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white active:scale-[0.98] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
                         >
                           <Banknote className="w-4 h-4" /> จ่ายเงินตัดบัญชี
                         </button>
@@ -832,56 +829,56 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             
             {/* กล่องทำไก่/ขายไก่ */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-200 bg-gradient-to-br from-white to-orange-50/30">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-200 bg-gradient-to-br from-white to-orange-50/30 transition-all duration-300">
               <div className="flex justify-between items-center mb-3 border-b border-orange-100 pb-2">
                 <h2 className="text-sm md:text-base font-semibold text-orange-800 flex items-center gap-1.5">
                   <Calculator className="w-4 h-4" /> ค่าแรงยอดขาย (กล่อง)
                 </h2>
-                <button onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })} className="text-orange-600 hover:text-orange-800 bg-orange-100 p-1.5 rounded transition" title="ตั้งค่าเรท">
+                <button onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })} className="text-orange-600 hover:text-orange-800 bg-orange-100 hover:bg-orange-200 active:scale-90 p-1.5 rounded transition-all duration-200" title="ตั้งค่าเรท">
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
               <div className="space-y-3">
                 <div className="flex gap-2">
-                   <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" />
-                   <input type="number" min="0" placeholder="จำนวนกล่อง" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600" />
+                   <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
+                   <input type="number" min="0" placeholder="จำนวนกล่อง" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
                 </div>
                 <div className="flex gap-2">
-                   <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-2 border rounded-lg text-sm flex flex-col items-center justify-center transition ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                   <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-2 border rounded-lg text-sm flex flex-col items-center justify-center active:scale-[0.98] transition-all duration-200 ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
                      <span className="flex items-center gap-1"><ChefHat className="w-3.5 h-3.5"/> ทำไก่</span>
                      <span className="font-bold">{wageForm.prepPartners.length} คน</span>
                    </button>
-                   <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-2 border rounded-lg text-sm flex flex-col items-center justify-center transition ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                   <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-2 border rounded-lg text-sm flex flex-col items-center justify-center active:scale-[0.98] transition-all duration-200 ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
                      <span className="flex items-center gap-1"><ShoppingBag className="w-3.5 h-3.5"/> ขายไก่</span>
                      <span className="font-bold">{wageForm.sellPartners.length} คน</span>
                    </button>
                 </div>
-                <button onClick={handleCalculateWages} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg text-sm transition shadow-sm">
+                <button onClick={handleCalculateWages} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg text-sm active:scale-[0.98] transition-all duration-200 shadow-sm">
                   คำนวณและแจกจ่าย
                 </button>
               </div>
             </div>
 
             {/* กล่องจัดส่ง */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-200 bg-gradient-to-br from-white to-purple-50/30">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-purple-200 bg-gradient-to-br from-white to-purple-50/30 transition-all duration-300">
               <div className="flex justify-between items-center mb-3 border-b border-purple-100 pb-2">
                 <h2 className="text-sm md:text-base font-semibold text-purple-800 flex items-center gap-1.5">
                   <Truck className="w-4 h-4" /> ค่าแรงจัดส่ง (รอบ)
                 </h2>
-                <button onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })} className="text-purple-600 hover:text-purple-800 bg-purple-100 p-1.5 rounded transition" title="ตั้งค่าเรท">
+                <button onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })} className="text-purple-600 hover:text-purple-800 bg-purple-100 hover:bg-purple-200 active:scale-90 p-1.5 rounded transition-all duration-200" title="ตั้งค่าเรท">
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
               <div className="space-y-3">
                 <div className="flex gap-2">
-                   <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" />
-                   <input type="number" min="0" placeholder="จำนวนรอบรวม" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600" />
+                   <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
+                   <input type="number" min="0" placeholder="จำนวนรอบรวม" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
                 </div>
-                <button type="button" onClick={() => setDeliverySelectModal(true)} className={`w-full p-2 border rounded-lg text-sm flex items-center justify-between transition ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                <button type="button" onClick={() => setDeliverySelectModal(true)} className={`w-full p-2 border rounded-lg text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
                   <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
                   <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
                 </button>
-                <button onClick={handleCalculateDelivery} className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 rounded-lg text-sm transition shadow-sm">
+                <button onClick={handleCalculateDelivery} className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 rounded-lg text-sm active:scale-[0.98] transition-all duration-200 shadow-sm">
                   คำนวณและแจกจ่าย
                 </button>
               </div>
@@ -891,26 +888,26 @@ export default function App() {
         )}
 
         {/* แสดงประวัติการคำนวณค่าแรง (แยกจากบัญชีหลัก) */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <button onClick={() => setIsWageHistoryOpen(!isWageHistoryOpen)} className="w-full p-4 bg-orange-50/50 hover:bg-orange-100/50 border-b border-orange-100 flex justify-between items-center transition">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
+          <button onClick={() => setIsWageHistoryOpen(!isWageHistoryOpen)} className="w-full p-4 bg-orange-50/50 hover:bg-orange-100/50 border-b border-orange-100 flex justify-between items-center transition-colors duration-200">
             <div className="flex items-center gap-2">
                <History className="w-5 h-5 text-orange-600" />
                <h3 className="font-semibold text-orange-800">ประวัติคำนวณค่าแรง (กล่อง/จัดส่ง)</h3>
             </div>
             <div className="flex items-center gap-2">
                <span className="text-xs font-bold text-orange-600 bg-white px-3 py-1 rounded-full shadow-sm">{wageHistory.length} รายการ</span>
-               {isWageHistoryOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+               <ChevronDown className={`w-5 h-5 text-orange-400 transition-transform duration-300 ease-out ${isWageHistoryOpen ? 'rotate-180' : ''}`} />
             </div>
           </button>
           
-          {isWageHistoryOpen && (
-            <div className="max-h-60 overflow-y-auto bg-white p-2">
+          <div className={`overflow-hidden transition-all duration-300 ease-out ${isWageHistoryOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="overflow-y-auto bg-white p-2">
               {wageHistory.length === 0 ? (
                 <p className="text-center py-6 text-gray-400 text-sm">ไม่พบประวัติการคำนวณ</p>
               ) : (
                 <div className="space-y-2">
                   {wageHistory.map(log => (
-                    <div key={log.id} className={`border rounded-lg p-3 text-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-2 transition ${log.logType === 'delivery' ? 'bg-purple-50/30 border-purple-100 hover:bg-purple-50' : 'bg-orange-50/30 border-orange-100 hover:bg-orange-50'}`}>
+                    <div key={log.id} className={`border rounded-lg p-3 text-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-2 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${log.logType === 'delivery' ? 'bg-purple-50/30 border-purple-100 hover:bg-purple-50' : 'bg-orange-50/30 border-orange-100 hover:bg-orange-50'}`}>
                       <div>
                         <span className="font-bold text-gray-800">{log.date}</span>
                         <span className="mx-2 text-gray-300">|</span>
@@ -934,7 +931,7 @@ export default function App() {
                         </div>
                       </div>
                       {isAdmin && (
-                        <button onClick={() => handleDeleteWageLog(log)} className="text-gray-400 hover:text-red-500 p-1.5 bg-white shadow-sm border border-gray-100 rounded md:ml-auto">
+                        <button onClick={() => handleDeleteWageLog(log)} className="text-gray-400 hover:text-red-500 p-1.5 bg-white shadow-sm border border-gray-100 rounded md:ml-auto active:scale-90 transition-all duration-200">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
@@ -943,13 +940,13 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
+          </div>
         </div>
 
 
         {/* Input Form บัญชีหลัก (ซ่อนถ้าไม่ใช่ Admin) */}
         {isAdmin && (
-          <div id="record-form" className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 animate-in fade-in duration-300">
+          <div id="record-form" className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 animate-in fade-in duration-500">
             <h2 className="text-base md:text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
               {editingId ? <Edit2 className="w-5 h-5 text-yellow-500" /> : <PlusCircle className="w-5 h-5 text-blue-500" />}
               {editingId ? 'แก้ไขรายการบัญชี' : 'บันทึกรายการบัญชีกองกลาง'}
@@ -957,10 +954,10 @@ export default function App() {
             
             <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
               <div className="grid grid-cols-2 gap-3 md:gap-4">
-                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'income' } })} className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'income' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'income' } })} className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 ${formData.type === 'income' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                   <PlusCircle className="w-5 h-5" /> รายรับ
                 </button>
-                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'expense' } })} className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition ${formData.type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'expense' } })} className={`py-2.5 md:py-3 rounded-lg font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 ${formData.type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
                   <MinusCircle className="w-5 h-5" /> รายจ่าย
                 </button>
               </div>
@@ -968,37 +965,37 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท)*</label>
-                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm" placeholder="0.00" />
+                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="0.00" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่*</label>
-                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm">
+                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
                     <option value="" disabled>-- เลือกหมวดหมู่ --</option>
                     {categories[formData.type].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">วันที่*</label>
-                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm" />
+                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
-                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm" placeholder="ระบุเพิ่มเติม..." />
+                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="ระบุเพิ่มเติม..." />
                 </div>
                 
                 {/* ระบบแนบสลิป */}
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">แนบสลิป/ใบเสร็จ (ไม่เกิน 5MB)</label>
                   <div className="flex items-center gap-3">
-                    <label className={`flex items-center justify-center ${isUploading ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50 hover:bg-gray-100 cursor-pointer'} text-gray-600 border border-gray-300 border-dashed rounded-lg p-2.5 transition w-full sm:w-auto`}>
+                    <label className={`flex items-center justify-center ${isUploading ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50 hover:bg-gray-100 cursor-pointer'} text-gray-600 border border-gray-300 border-dashed rounded-lg p-2.5 transition-all duration-200 w-full sm:w-auto active:scale-[0.98]`}>
                        <Camera className="w-5 h-5 mr-2" />
                        <span className="text-sm font-medium">{isUploading ? 'กำลังอัปโหลด...' : (receiptPreview ? 'เปลี่ยนรูป' : 'อัปโหลดรูปภาพ')}</span>
                        <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={isUploading} />
                     </label>
                     {receiptPreview && (
-                       <div className="relative">
-                          <img src={receiptPreview} alt="preview" className="h-12 w-12 object-cover rounded-md border border-gray-200 shadow-sm cursor-pointer" onClick={() => setReceiptViewModal({ isOpen: true, url: receiptPreview })} />
-                          <button type="button" onClick={() => { setReceiptFile(null); setReceiptPreview(''); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:bg-red-600">
+                       <div className="relative animate-in zoom-in duration-200">
+                          <img src={receiptPreview} alt="preview" className="h-12 w-12 object-cover rounded-md border border-gray-200 shadow-sm cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setReceiptViewModal({ isOpen: true, url: receiptPreview })} />
+                          <button type="button" onClick={() => { setReceiptFile(null); setReceiptPreview(''); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:bg-red-600 active:scale-90 transition-transform">
                             <X className="w-3 h-3" />
                           </button>
                        </div>
@@ -1008,11 +1005,11 @@ export default function App() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <button type="submit" disabled={isUploading} className={`flex-1 ${isUploading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'} text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition shadow-sm`}>
+                <button type="submit" disabled={isUploading} className={`flex-1 ${isUploading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'} text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 shadow-sm`}>
                   {isUploading ? <span className="animate-pulse">กำลังบันทึก...</span> : <><Check className="w-5 h-5" /> {editingId ? 'บันทึกการแก้ไขบัญชี' : 'บันทึกลงบัญชี'}</>}
                 </button>
                 {editingId && (
-                  <button type="button" onClick={cancelEdit} disabled={isUploading} className="py-3 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex justify-center items-center transition">ยกเลิกการแก้ไข</button>
+                  <button type="button" onClick={cancelEdit} disabled={isUploading} className="py-3 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex justify-center items-center active:scale-[0.98] transition-all duration-200">ยกเลิกการแก้ไข</button>
                 )}
               </div>
             </form>
@@ -1020,18 +1017,18 @@ export default function App() {
         )}
 
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row items-center gap-2 bg-white p-3 md:p-4 rounded-xl shadow-sm border border-gray-200">
+        <div className="flex flex-col sm:flex-row items-center gap-2 bg-white p-3 md:p-4 rounded-xl shadow-sm border border-gray-200 transition-all duration-300">
           <div className="flex items-center gap-2 w-full sm:w-auto text-gray-500 font-medium">
              <Filter className="w-5 h-5" /> ตัวกรอง:
           </div>
           <div className="flex gap-2 w-full">
             <input 
               type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-              className="p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500 w-full bg-white text-gray-900"
+              className="p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500 w-full bg-white text-gray-900 transition-all duration-200"
             />
             <select 
               value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
-              className="p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500 w-full bg-white text-gray-900"
+              className="p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500 w-full bg-white text-gray-900 transition-all duration-200"
             >
               <option value="">ทุกหมวดหมู่</option>
               {[...categories.income, ...categories.expense].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
@@ -1040,34 +1037,34 @@ export default function App() {
         </div>
 
         {/* Transaction History List (บัญชีหลัก) */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <button onClick={() => setIsMainHistoryOpen(!isMainHistoryOpen)} className="w-full p-4 bg-gray-50 hover:bg-gray-100 border-b border-gray-200 flex justify-between items-center transition">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
+          <button onClick={() => setIsMainHistoryOpen(!isMainHistoryOpen)} className="w-full p-4 bg-gray-50 hover:bg-gray-100 border-b border-gray-200 flex justify-between items-center transition-colors duration-200">
             <div className="flex items-center gap-2">
                <History className="w-5 h-5 text-gray-600" />
                <h3 className="font-semibold text-gray-700">ประวัติบัญชีกองกลาง</h3>
             </div>
             <div className="flex items-center gap-2">
                <span className="text-xs font-bold text-gray-600 bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">{filteredRecords.length} รายการ</span>
-               {isMainHistoryOpen ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+               <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform duration-300 ease-out ${isMainHistoryOpen ? 'rotate-180' : ''}`} />
             </div>
           </button>
           
-          {isMainHistoryOpen && (
-            <div className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto bg-white">
+          <div className={`overflow-hidden transition-all duration-300 ease-out ${isMainHistoryOpen ? 'max-h-[60vh] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="overflow-y-auto bg-white divide-y divide-gray-100">
               {filteredRecords.length === 0 ? (
                 <p className="text-center py-8 text-gray-400 text-sm">ไม่พบประวัติรายการบัญชี</p>
               ) : (
                 filteredRecords.map((record) => (
-                  <div key={record.id} className="p-4 hover:bg-blue-50 flex items-center justify-between transition-colors">
+                  <div key={record.id} className="p-4 hover:bg-blue-50 flex items-center justify-between transition-colors duration-200">
                     <div className="flex items-start md:items-center gap-3 overflow-hidden pr-2">
-                      <div className={`p-2 rounded-full shrink-0 mt-0.5 md:mt-0 ${record.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                      <div className={`p-2 rounded-full shrink-0 mt-0.5 md:mt-0 transition-transform duration-200 hover:scale-110 ${record.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                         {record.type === 'income' ? <PlusCircle className="w-5 h-5" /> : <MinusCircle className="w-5 h-5" />}
                       </div>
                       <div className="overflow-hidden">
                         <div className="flex items-center gap-2">
                            <p className="font-semibold text-gray-800 text-sm md:text-base truncate">{record.category}</p>
                            {record.receiptUrl && (
-                             <button onClick={() => setReceiptViewModal({ isOpen: true, url: record.receiptUrl })} className="text-blue-500 hover:text-blue-700" title="ดูสลิป">
+                             <button onClick={() => setReceiptViewModal({ isOpen: true, url: record.receiptUrl })} className="text-blue-500 hover:text-blue-700 active:scale-90 transition-transform" title="ดูสลิป">
                                <ImageIcon className="w-4 h-4" />
                              </button>
                            )}
@@ -1082,10 +1079,10 @@ export default function App() {
                       </span>
                       {isAdmin && (
                         <div className="flex gap-1">
-                          <button onClick={() => handleEdit(record)} className="text-gray-400 hover:text-blue-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="แก้ไข">
+                          <button onClick={() => handleEdit(record)} className="text-gray-400 hover:text-blue-500 p-1.5 bg-white rounded-md shadow-sm border border-gray-200 active:scale-90 transition-all duration-200" title="แก้ไข">
                             <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
                           </button>
-                          <button onClick={() => handleDelete(record.id, record)} className="text-gray-400 hover:text-red-500 p-1.5 transition bg-white rounded-md shadow-sm border border-gray-200" title="ลบ">
+                          <button onClick={() => handleDelete(record.id, record)} className="text-gray-400 hover:text-red-500 p-1.5 bg-white rounded-md shadow-sm border border-gray-200 active:scale-90 transition-all duration-200" title="ลบ">
                             <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
                           </button>
                         </div>
@@ -1095,7 +1092,7 @@ export default function App() {
                 ))
               )}
             </div>
-          )}
+          </div>
         </div>
 
       </div>
@@ -1106,40 +1103,40 @@ export default function App() {
       
       {/* Modal ดูรูปสลิป */}
       {receiptViewModal.isOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60] backdrop-blur-sm" onClick={() => setReceiptViewModal({ isOpen: false, url: '' })}>
-          <div className="relative max-w-2xl w-full flex flex-col items-center">
-            <button onClick={() => setReceiptViewModal({ isOpen: false, url: '' })} className="absolute -top-10 right-0 text-white hover:text-gray-300">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[60] animate-in fade-in duration-300" onClick={() => setReceiptViewModal({ isOpen: false, url: '' })}>
+          <div className="relative max-w-2xl w-full flex flex-col items-center animate-in zoom-in-[0.95] duration-300 ease-out">
+            <button onClick={() => setReceiptViewModal({ isOpen: false, url: '' })} className="absolute -top-12 right-0 text-white/80 hover:text-white bg-black/20 hover:bg-black/40 rounded-full p-1 transition-all active:scale-90">
                <X className="w-8 h-8" />
             </button>
-            <img src={receiptViewModal.url} alt="Receipt" className="max-h-[85vh] w-auto object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
+            <img src={receiptViewModal.url} alt="Receipt" className="max-h-[85vh] w-auto object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
           </div>
         </div>
       )}
 
       {/* Modal Login */}
       {showLoginModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-[0.95] slide-in-from-bottom-4 duration-300 ease-out">
             <div className="flex flex-col items-center justify-center mb-6">
-              <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-3">
-                 <Lock size={24} />
+              <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-4 shadow-sm border border-blue-100">
+                 <Lock size={26} />
               </div>
-              <h3 className="text-lg font-bold text-gray-800">เข้าสู่ระบบ Admin</h3>
+              <h3 className="text-xl font-bold text-gray-800">เข้าสู่ระบบ Admin</h3>
               <p className="text-sm text-gray-500 text-center mt-1">ใส่รหัส PIN เพื่อจัดการระบบบัญชี</p>
             </div>
             
             <form onSubmit={handleLogin}>
-              <div className="mb-5">
+              <div className="mb-6">
                 <input 
                   type="password" pattern="[0-9]*" inputMode="numeric"
                   value={pinInput} onChange={(e) => setPinInput(e.target.value)} 
-                  className="w-full p-3 text-center text-2xl tracking-[0.5em] border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900" 
+                  className="w-full p-4 text-center text-3xl tracking-[0.5em] border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200" 
                   placeholder="••••••" autoFocus required 
                 />
               </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => { setShowLoginModal(false); setPinInput(''); }} className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition">ยกเลิก</button>
-                <button type="submit" className="flex-1 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-bold transition shadow-sm">ปลดล็อก</button>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => { setShowLoginModal(false); setPinInput(''); }} className="flex-1 py-3 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium active:scale-[0.97] transition-all duration-200">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-3 text-white bg-blue-600 hover:bg-blue-700 rounded-xl font-bold active:scale-[0.97] transition-all duration-200 shadow-md hover:shadow-lg">ปลดล็อก</button>
               </div>
             </form>
           </div>
@@ -1148,8 +1145,8 @@ export default function App() {
 
       {/* Modal จัดการ หุ้นส่วนพื้นฐาน */}
       {partnerModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-[0.95] slide-in-from-bottom-4 duration-300 ease-out">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800 border-b pb-3">
               {partnerModal.mode === 'add' ? <UserPlus className="text-blue-500" /> : <Settings className="text-blue-500" />}
               {partnerModal.mode === 'add' ? 'เพิ่มรายชื่อหุ้นส่วน' : `ตั้งยอดค่าแรง: ${partnerModal.data?.name}`}
@@ -1164,14 +1161,14 @@ export default function App() {
                     type={partnerModal.mode === 'add' ? 'text' : 'number'}
                     step={partnerModal.mode === 'add' ? undefined : 'any'} min="0"
                     value={partnerModal.value} onChange={(e) => setPartnerModal({...partnerModal, value: e.target.value})}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900"
+                    className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                     placeholder={partnerModal.mode === 'add' ? 'ชื่อบุคคล' : '0.00'} autoFocus
                   />
                 </div>
               </div>
-              <div className="flex gap-2 mt-6 pt-2">
-                <button type="button" onClick={() => setPartnerModal({ isOpen: false, mode: '', data: null, value: '' })} className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition">ยกเลิก</button>
-                <button type="submit" className="flex-1 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-bold transition shadow-sm">บันทึก</button>
+              <div className="flex gap-3 mt-6 pt-2">
+                <button type="button" onClick={() => setPartnerModal({ isOpen: false, mode: '', data: null, value: '' })} className="flex-1 py-3 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium active:scale-[0.97] transition-all duration-200">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-3 text-white bg-blue-600 hover:bg-blue-700 rounded-xl text-sm font-bold active:scale-[0.97] transition-all duration-200 shadow-md">บันทึก</button>
               </div>
             </form>
           </div>
@@ -1180,8 +1177,8 @@ export default function App() {
 
       {/* Modal ตั้งค่าเรทค่าแรง/ค่าส่ง */}
       {wageSettingsModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-[0.95] slide-in-from-bottom-4 duration-300 ease-out">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800 border-b pb-3">
               <Settings className="text-orange-500" /> ตั้งค่าเรทค่าแรง & ค่าส่ง
             </h3>
@@ -1191,7 +1188,7 @@ export default function App() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">ค่าแรงทำไก่ (บาท/กล่อง)</label>
                   <input type="number" step="any" min="0" required
                     value={wageSettingsModal.prepRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, prepRate: e.target.value})}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900"
+                    className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                     placeholder="0.00" autoFocus
                   />
                 </div>
@@ -1199,7 +1196,7 @@ export default function App() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">ค่าแรงขายไก่ (บาท/กล่อง)</label>
                   <input type="number" step="any" min="0" required
                     value={wageSettingsModal.sellRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, sellRate: e.target.value})}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none bg-white text-gray-900"
+                    className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                     placeholder="0.00"
                   />
                 </div>
@@ -1207,14 +1204,14 @@ export default function App() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">ค่าจัดส่ง (บาท/รอบ)</label>
                   <input type="number" step="any" min="0" required
                     value={wageSettingsModal.deliveryRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, deliveryRate: e.target.value})}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white text-gray-900"
+                    className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                     placeholder="0.00"
                   />
                 </div>
               </div>
-              <div className="flex gap-2 mt-6 pt-2">
-                <button type="button" onClick={() => setWageSettingsModal({ isOpen: false, prepRate: '', sellRate: '', deliveryRate: '' })} className="flex-1 py-2.5 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition">ยกเลิก</button>
-                <button type="submit" className="flex-1 py-2.5 text-white bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-bold transition shadow-sm">บันทึกตั้งค่า</button>
+              <div className="flex gap-3 mt-6 pt-2">
+                <button type="button" onClick={() => setWageSettingsModal({ isOpen: false, prepRate: '', sellRate: '', deliveryRate: '' })} className="flex-1 py-3 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium active:scale-[0.97] transition-all duration-200">ยกเลิก</button>
+                <button type="submit" className="flex-1 py-3 text-white bg-blue-600 hover:bg-blue-700 rounded-xl text-sm font-bold active:scale-[0.97] transition-all duration-200 shadow-md">บันทึกตั้งค่า</button>
               </div>
             </form>
           </div>
@@ -1223,8 +1220,8 @@ export default function App() {
 
       {/* Modal เลือกคนทำไก่ / ขายไก่ */}
       {partnerSelectModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 flex flex-col max-h-[80vh] animate-in zoom-in-[0.95] slide-in-from-bottom-4 duration-300 ease-out">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800 border-b pb-3 shrink-0">
               {partnerSelectModal.type === 'prep' ? <ChefHat className="text-orange-500" /> : <ShoppingBag className="text-orange-500" />}
               เลือกคน{partnerSelectModal.type === 'prep' ? 'ทำไก่' : 'ขายไก่'}
@@ -1235,11 +1232,11 @@ export default function App() {
               {partners.map(p => {
                  const isSelected = wageForm[partnerSelectModal.type === 'prep' ? 'prepPartners' : 'sellPartners'].includes(p.id);
                  return (
-                   <label key={p.id} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                   <label key={p.id} className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all duration-200 active:scale-[0.98] ${isSelected ? 'border-orange-500 bg-orange-50 shadow-sm' : 'border-gray-200 hover:bg-gray-50'}`}>
                       <input 
                         type="checkbox" checked={isSelected}
                         onChange={() => togglePartnerSelection(p.id, partnerSelectModal.type)}
-                        className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 cursor-pointer"
+                        className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500 cursor-pointer transition-all"
                       />
                       <span className={`font-medium ${isSelected ? 'text-orange-800' : 'text-gray-700'}`}>{p.name}</span>
                    </label>
@@ -1247,15 +1244,15 @@ export default function App() {
               })}
             </div>
             
-            <button type="button" onClick={() => setPartnerSelectModal({ isOpen: false, type: '' })} className="w-full py-3 text-white bg-gray-800 hover:bg-black rounded-lg text-sm font-bold transition shadow-sm shrink-0">ตกลง</button>
+            <button type="button" onClick={() => setPartnerSelectModal({ isOpen: false, type: '' })} className="w-full py-3.5 text-white bg-gray-800 hover:bg-black rounded-xl text-sm font-bold active:scale-[0.98] transition-all duration-200 shadow-md shrink-0">ตกลง</button>
           </div>
         </div>
       )}
 
       {/* Modal เลือกคนส่งของ */}
       {deliverySelectModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 flex flex-col max-h-[80vh] animate-in zoom-in-[0.95] slide-in-from-bottom-4 duration-300 ease-out">
             <h3 className="text-lg font-bold mb-1 flex items-center gap-2 text-gray-800 shrink-0">
               <Truck className="text-purple-500" /> ระบุรอบส่งของแต่ละคน
             </h3>
@@ -1266,14 +1263,14 @@ export default function App() {
               {partners.map(p => {
                  const currentTrips = deliveryForm.tripsByPartner[p.id] || 0;
                  return (
-                   <div key={p.id} className={`flex items-center justify-between p-2 rounded-lg border transition ${currentTrips > 0 ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                   <div key={p.id} className={`flex items-center justify-between p-2.5 rounded-xl border transition-all duration-200 ${currentTrips > 0 ? 'border-purple-400 bg-purple-50 shadow-sm' : 'border-gray-200 hover:bg-gray-50'}`}>
                       <span className={`font-medium ml-2 ${currentTrips > 0 ? 'text-purple-800' : 'text-gray-700'}`}>{p.name}</span>
                       <div className="flex items-center gap-2">
                          <input 
                            type="number" min="0" step="1" placeholder="0"
                            value={currentTrips || ''}
                            onChange={(e) => handleDeliveryTripChange(p.id, e.target.value)}
-                           className="w-16 p-1.5 text-center border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 outline-none text-sm font-bold text-purple-600 bg-white"
+                           className="w-16 p-2 text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold text-purple-600 bg-white transition-all"
                          />
                          <span className="text-xs text-gray-500 w-6">รอบ</span>
                       </div>
@@ -1282,41 +1279,41 @@ export default function App() {
               })}
             </div>
             
-            <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg mb-4 text-sm">
+            <div className="flex justify-between items-center bg-gray-50 p-3 rounded-xl mb-4 text-sm border border-gray-100">
                <span className="font-medium text-gray-600">รวมที่กรอกแล้ว:</span>
                <span className={`font-bold ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) === Number(deliveryForm.totalTrips) ? 'text-green-600' : 'text-red-500'}`}>
                   {Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0}
                </span>
             </div>
 
-            <button type="button" onClick={() => setDeliverySelectModal(false)} className="w-full py-3 text-white bg-gray-800 hover:bg-black rounded-lg text-sm font-bold transition shadow-sm shrink-0">ตกลง / ปิด</button>
+            <button type="button" onClick={() => setDeliverySelectModal(false)} className="w-full py-3.5 text-white bg-gray-800 hover:bg-black rounded-xl text-sm font-bold active:scale-[0.98] transition-all duration-200 shadow-md shrink-0">ตกลง / ปิด</button>
           </div>
         </div>
       )}
 
       {/* Modal ดูประวัติส่วนตัว */}
       {partnerDetailsModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-blue-50/50 rounded-t-xl shrink-0">
-               <h3 className="text-lg font-bold flex items-center gap-2 text-gray-800">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col max-h-[85vh] animate-in zoom-in-[0.95] slide-in-from-bottom-4 duration-300 ease-out">
+            <div className="p-4 border-b border-blue-100 flex justify-between items-center bg-blue-50/50 rounded-t-2xl shrink-0">
+               <h3 className="text-lg font-bold flex items-center gap-2 text-blue-900">
                  <Info className="text-blue-500 w-5 h-5" /> ประวัติยอดเงิน: {partnerDetailsModal.partner?.name}
                </h3>
-               <button onClick={() => setPartnerDetailsModal({ isOpen: false, partner: null })} className="text-gray-400 hover:text-gray-600 p-1"><X className="w-5 h-5"/></button>
+               <button onClick={() => setPartnerDetailsModal({ isOpen: false, partner: null })} className="text-blue-400 hover:text-blue-600 p-1.5 bg-white rounded-full shadow-sm active:scale-90 transition-all"><X className="w-4 h-4"/></button>
             </div>
             
-            <div className="overflow-y-auto flex-1 p-4 bg-gray-50">
+            <div className="overflow-y-auto flex-1 p-4 bg-gray-50/50">
                {getPartnerStatement(partnerDetailsModal.partner).length === 0 ? (
                  <p className="text-center text-sm text-gray-400 py-10">ยังไม่มีประวัติการได้เงิน หรือการเบิกจ่าย</p>
                ) : (
-                 <div className="space-y-2">
+                 <div className="space-y-3">
                    {getPartnerStatement(partnerDetailsModal.partner).map((stmt, idx) => (
-                     <div key={idx} className={`p-3 rounded-lg border bg-white flex justify-between items-center shadow-sm ${stmt.isIncome ? 'border-l-4 border-l-orange-400' : 'border-l-4 border-l-blue-400'}`}>
+                     <div key={idx} className={`p-3.5 rounded-xl border bg-white flex justify-between items-center shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ${stmt.isIncome ? 'border-l-4 border-l-orange-400' : 'border-l-4 border-l-blue-400'}`}>
                         <div>
                           <div className="font-semibold text-gray-800 text-sm">{stmt.text}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">{stmt.date}</div>
+                          <div className="text-xs text-gray-500 mt-1">{stmt.date}</div>
                         </div>
-                        <div className={`font-bold ${stmt.isIncome ? 'text-orange-600' : 'text-blue-600'}`}>
+                        <div className={`font-bold text-base ${stmt.isIncome ? 'text-orange-600' : 'text-blue-600'}`}>
                            {stmt.isIncome ? '+' : '-'}฿{stmt.amount.toLocaleString()}
                         </div>
                      </div>
@@ -1325,20 +1322,20 @@ export default function App() {
                )}
             </div>
             
-            <div className="p-4 border-t border-gray-100 bg-white rounded-b-xl shrink-0 space-y-2">
+            <div className="p-5 border-t border-gray-100 bg-white rounded-b-2xl shrink-0 space-y-2.5 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">ยอดค่าแรงรอจ่าย:</span>
-                  <span className="font-semibold text-orange-600">฿{(partnerDetailsModal.partner?.pendingWage || 0).toLocaleString()}</span>
+                  <span className="text-gray-600 font-medium">ยอดค่าแรงรอจ่าย:</span>
+                  <span className="font-semibold text-orange-600 text-base">฿{(partnerDetailsModal.partner?.pendingWage || 0).toLocaleString()}</span>
                </div>
                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">ปันผลเฉลี่ยตามสถานะร้าน:</span>
-                  <span className={`font-semibold ${dividendPerPerson >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
+                  <span className="text-gray-600 font-medium">ปันผลเฉลี่ยตามสถานะร้าน:</span>
+                  <span className={`font-semibold text-base ${dividendPerPerson >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
                     {dividendPerPerson >= 0 ? '+' : ''}฿{dividendPerPerson.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
                   </span>
                </div>
-               <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+               <div className="flex justify-between items-center pt-3 border-t border-gray-100 mt-1">
                   <span className="text-base font-bold text-gray-800">ยอดรวมทั้งหมด:</span>
-                  <span className="text-xl font-bold text-blue-600">
+                  <span className="text-2xl font-bold text-blue-600">
                      ฿{((partnerDetailsModal.partner?.pendingWage || 0) + dividendPerPerson).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
                   </span>
                </div>
