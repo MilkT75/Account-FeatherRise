@@ -625,6 +625,7 @@ export default function App() {
   const balance = totals.income - totals.expense;
   const totalPendingWages = partners.reduce((sum, p) => sum + (Number(p.pendingWage) || 0), 0);
   const netProfitLoss = balance - Number(shopCapital || 0) - totalPendingWages;
+  const dividendPerPerson = partners.length > 0 ? (netProfitLoss / partners.length) : 0;
 
   const getPartnerStatement = (partner) => {
       let stmts = [];
@@ -661,10 +662,13 @@ export default function App() {
       {/* Header */}
       <div className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-20">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <h1 className="text-lg md:text-xl font-bold flex items-center gap-2">
-            <Wallet className="w-6 h-6" /> ระบบบัญชี
-            {!isAdmin && <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-medium">โหมดผู้เยี่ยมชม</span>}
-            {isAdmin && <span className="bg-green-400 text-white text-xs px-2 py-0.5 rounded-full font-medium shadow-sm">โหมดแอดมิน</span>}
+          
+          <h1 className="text-lg md:text-xl font-bold flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="flex items-center gap-2">
+              <Wallet className="w-6 h-6" /> ระบบบัญชี
+            </span>
+            {!isAdmin && <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full font-medium tracking-wide border border-white/10">โหมดผู้เยี่ยมชม</span>}
+            {isAdmin && <span className="bg-green-400 text-white text-xs px-3 py-1 rounded-full font-medium shadow-sm tracking-wide">โหมดแอดมิน</span>}
           </h1>
           
           <div className="w-full sm:w-auto flex justify-end gap-2">
@@ -733,7 +737,7 @@ export default function App() {
           <div className={`bg-white p-4 rounded-xl shadow-sm border-l-4 ${netProfitLoss >= 0 ? 'border-teal-500' : 'border-red-600'} flex flex-col justify-between items-center text-center col-span-2 md:col-span-1`}>
             <p className="text-xs md:text-sm text-gray-500 font-medium">สถานะร้าน (กำไร/ขาดทุน)</p>
             <p className={`text-lg md:text-2xl font-bold ${netProfitLoss >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
-              {netProfitLoss >= 0 ? '+' : ''}฿{netProfitLoss.toLocaleString()}
+              {netProfitLoss >= 0 ? '+' : ''}฿{netProfitLoss.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
             </p>
           </div>
         </div>
@@ -758,45 +762,67 @@ export default function App() {
             {partners.length === 0 ? (
                <div className="col-span-full p-6 text-center text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">ยังไม่มีรายชื่อ</div>
             ) : (
-              partners.map((partner) => (
+              partners.map((partner) => {
+                const totalAmount = (partner.pendingWage || 0) + dividendPerPerson;
+
+                return (
                 <div key={partner.id} className="border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow bg-white relative group">
                   <button 
                      onClick={() => setPartnerDetailsModal({ isOpen: true, partner })} 
                      className="absolute top-2 right-2 text-blue-300 hover:text-blue-600 transition-colors p-1"
                      title="ดูรายละเอียดการได้เงิน"
                   >
-                     <Info className="w-4 h-4" />
+                     <Info className="w-5 h-5" />
                   </button>
 
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center shadow-inner mt-2">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center shadow-inner mt-2 shrink-0">
                     <Users className="w-6 h-6 text-gray-500" />
                   </div>
-                  <div className="text-center w-full">
+                  
+                  <div className="text-center w-full mt-1">
                       <span className="font-bold text-gray-800 text-sm block truncate">{partner.name}</span>
-                      <span className={`text-xs mt-1 block ${partner.pendingWage > 0 ? 'text-orange-500 font-semibold' : 'text-gray-400'}`}>
-                         ยอดรอจ่าย: ฿{(partner.pendingWage || 0).toLocaleString()}
-                      </span>
+                      
+                      <div className="bg-gray-50 rounded-lg p-2 mt-2 border border-gray-100 w-full text-left">
+                          <div className="flex justify-between items-center text-[11px] md:text-xs mb-1">
+                              <span className="text-gray-500">ค่าแรงรอจ่าย:</span>
+                              <span className={`font-semibold ${partner.pendingWage > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                                  ฿{(partner.pendingWage || 0).toLocaleString()}
+                              </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[11px] md:text-xs mb-1">
+                              <span className="text-gray-500">ปันผลเฉลี่ย:</span>
+                              <span className={`font-semibold ${dividendPerPerson > 0 ? 'text-teal-600' : dividendPerPerson < 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                                  {dividendPerPerson > 0 ? '+' : ''}฿{dividendPerPerson.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
+                              </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[11px] md:text-xs pt-1.5 mt-1.5 border-t border-gray-200">
+                              <span className="font-bold text-gray-700">รวมสุทธิ:</span>
+                              <span className={`font-bold ${totalAmount > 0 ? 'text-blue-600' : totalAmount < 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                  ฿{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
+                              </span>
+                          </div>
+                      </div>
                   </div>
                   
                   {isAdmin && (
                     <div className="w-full flex flex-col gap-2 mt-1">
                         <button 
                           onClick={() => setPartnerModal({ isOpen: true, mode: 'setWage', data: partner, value: partner.pendingWage || '' })}
-                          className="flex items-center justify-center gap-1.5 w-full bg-gray-50 text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-100 transition"
+                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-50 transition shadow-sm"
                         >
                           <Settings className="w-3.5 h-3.5" /> ตั้งยอดค่าแรง
                         </button>
                         <button 
                           onClick={() => handlePayWage(partner)}
                           disabled={!partner.pendingWage || partner.pendingWage <= 0}
-                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
                         >
                           <Banknote className="w-4 h-4" /> จ่ายเงินตัดบัญชี
                         </button>
                     </div>
                   )}
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>
@@ -1299,10 +1325,22 @@ export default function App() {
                )}
             </div>
             
-            <div className="p-4 border-t border-gray-100 bg-white rounded-b-xl shrink-0">
-               <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-600">ยอดรอจ่ายปัจจุบัน:</span>
-                  <span className="text-lg font-bold text-gray-800">฿{(partnerDetailsModal.partner?.pendingWage || 0).toLocaleString()}</span>
+            <div className="p-4 border-t border-gray-100 bg-white rounded-b-xl shrink-0 space-y-2">
+               <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">ยอดค่าแรงรอจ่าย:</span>
+                  <span className="font-semibold text-orange-600">฿{(partnerDetailsModal.partner?.pendingWage || 0).toLocaleString()}</span>
+               </div>
+               <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">ปันผลเฉลี่ยตามสถานะร้าน:</span>
+                  <span className={`font-semibold ${dividendPerPerson >= 0 ? 'text-teal-600' : 'text-red-600'}`}>
+                    {dividendPerPerson >= 0 ? '+' : ''}฿{dividendPerPerson.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
+                  </span>
+               </div>
+               <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                  <span className="text-base font-bold text-gray-800">ยอดรวมทั้งหมด:</span>
+                  <span className="text-xl font-bold text-blue-600">
+                     ฿{((partnerDetailsModal.partner?.pendingWage || 0) + dividendPerPerson).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}
+                  </span>
                </div>
             </div>
           </div>
