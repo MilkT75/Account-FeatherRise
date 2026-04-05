@@ -44,6 +44,9 @@ try {
 const GOOGLE_SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxMeGK6Bzv9FyIc6jlsMPWCtUqxyppxmD4eLTnUtkkrBHRFuwKluWsbOroYf_FF8Bae8A/exec";
 const ADMIN_PIN = "842019";
 
+// สไตล์ของ Scrollbar แบบมินิมอล (สไตล์ iOS)
+const scrollbarClass = "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400";
+
 // ==========================================
 // 3. iOS Animated Modal Component
 // ==========================================
@@ -54,11 +57,9 @@ const AnimatedModal = ({ isOpen, onClose, children, maxWidth = "max-w-sm", origi
   useEffect(() => {
     if (isOpen) {
       setRender(true);
-      // ดีเลย์เล็กน้อยให้เบราว์เซอร์เตรียมเรนเดอร์ก่อนเล่นแอนิเมชัน
       setTimeout(() => setVisible(true), 10);
     } else {
       setVisible(false);
-      // รอให้แอนิเมชันเล่นจบ (300ms) แล้วค่อยเคลียร์ DOM ทิ้ง
       const timer = setTimeout(() => setRender(false), 300);
       return () => clearTimeout(timer);
     }
@@ -68,17 +69,15 @@ const AnimatedModal = ({ isOpen, onClose, children, maxWidth = "max-w-sm", origi
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      {/* พื้นหลังทึบ เฟดอิน-เอาท์ */}
       <div 
         className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`} 
         onClick={onClose} 
       />
-      {/* ตัวป๊อปอัป ขยาย-หด แบบมีสปริง (cubic-bezier) */}
       <div 
         className={`relative ${bgClass} rounded-3xl shadow-2xl w-full ${maxWidth} flex flex-col max-h-[90vh] transition-all duration-300 ease-[cubic-bezier(0.17,0.89,0.32,1.15)] ${originClass} ${visible ? 'scale-100 opacity-100 translate-y-0' : 'scale-[0.8] opacity-0 translate-y-4'}`}
         onClick={e => e.stopPropagation()}
       >
-        <div className={`overflow-y-auto flex-1 ${pClass} rounded-3xl`}>
+        <div className={`overflow-y-auto flex-1 ${pClass} rounded-3xl ${scrollbarClass}`}>
           {children}
         </div>
       </div>
@@ -922,8 +921,8 @@ export default function App() {
             </div>
           </button>
           
-          <div className={`overflow-hidden transition-all duration-300 ease-out ${isWageHistoryOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-            <div className="overflow-y-auto bg-white p-3">
+          <div className={`overflow-hidden transition-all duration-300 ease-out ${isWageHistoryOpen ? 'max-h-[100vh] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className={`max-h-96 overflow-y-auto bg-white p-3 ${scrollbarClass}`}>
               {wageHistory.length === 0 ? (
                 <p className="text-center py-6 text-gray-400 text-sm">ไม่พบประวัติการคำนวณ</p>
               ) : (
@@ -1071,8 +1070,8 @@ export default function App() {
             </div>
           </button>
           
-          <div className={`overflow-hidden transition-all duration-300 ease-out ${isMainHistoryOpen ? 'max-h-[60vh] opacity-100' : 'max-h-0 opacity-0'}`}>
-            <div className="overflow-y-auto bg-white p-3 space-y-3">
+          <div className={`overflow-hidden transition-all duration-300 ease-out ${isMainHistoryOpen ? 'max-h-[100vh] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className={`max-h-[60vh] overflow-y-auto bg-white p-3 space-y-3 ${scrollbarClass}`}>
               {filteredRecords.length === 0 ? (
                 <p className="text-center py-8 text-gray-400 text-sm">ไม่พบประวัติรายการบัญชี</p>
               ) : (
@@ -1233,7 +1232,7 @@ export default function App() {
             เลือกคน{partnerSelectModal.type === 'prep' ? 'ทำไก่' : 'ขายไก่'}
           </h3>
           
-          <div className="overflow-y-auto flex-1 space-y-2 pr-2 mb-4">
+          <div className={`overflow-y-auto flex-1 space-y-2 pr-2 mb-4 ${scrollbarClass}`}>
             {partners.length === 0 ? <p className="text-center text-sm text-gray-400 py-4">ยังไม่มีรายชื่อพนักงาน</p> : null}
             {partners.map(p => {
                const isSelected = wageForm[partnerSelectModal.type === 'prep' ? 'prepPartners' : 'sellPartners'].includes(p.id);
@@ -1259,7 +1258,7 @@ export default function App() {
           </h3>
           <p className="text-sm text-gray-500 mb-4 border-b pb-3">รวมต้องได้ {deliveryForm.totalTrips || 0} รอบ</p>
           
-          <div className="overflow-y-auto flex-1 space-y-2 pr-2 mb-4">
+          <div className={`overflow-y-auto flex-1 space-y-2 pr-2 mb-4 ${scrollbarClass}`}>
             {partners.length === 0 ? <p className="text-center text-sm text-gray-400 py-4">ยังไม่มีรายชื่อพนักงาน</p> : null}
             {partners.map(p => {
                const currentTrips = deliveryForm.tripsByPartner[p.id] || 0;
@@ -1299,7 +1298,7 @@ export default function App() {
              <button onClick={() => setPartnerDetailsModal(prev => ({ ...prev, isOpen: false }))} className="text-blue-400 hover:text-blue-600 p-1.5 bg-white rounded-full shadow-sm active:scale-90 transition-all"><X className="w-4 h-4"/></button>
           </div>
           
-          <div className="overflow-y-auto max-h-[60vh] flex-1 p-4 bg-gray-50/50">
+          <div className={`overflow-y-auto max-h-[60vh] flex-1 p-4 bg-gray-50/50 ${scrollbarClass}`}>
              {getPartnerStatement(partnerDetailsModal.partner).length === 0 ? (
                <p className="text-center text-sm text-gray-400 py-10">ยังไม่มีประวัติการได้เงิน หรือการเบิกจ่าย</p>
              ) : (
