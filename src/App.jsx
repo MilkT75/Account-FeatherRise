@@ -5,11 +5,12 @@ import {
   getFirestore, collection, onSnapshot, addDoc, 
   deleteDoc, doc, updateDoc, setDoc, serverTimestamp, writeBatch 
 } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   PlusCircle, MinusCircle, Wallet, Trash2, Edit2, 
   X, Check, Filter, Users, UserPlus, Banknote, Settings,
   LogOut, Lock, Calculator, ChefHat, ShoppingBag, History,
-  Undo, Redo, ChevronDown, ChevronUp, Info, Truck
+  Undo, Redo, ChevronDown, ChevronUp, Info, Truck, Camera, Image as ImageIcon
 } from 'lucide-react';
 
 // ==========================================
@@ -24,13 +25,14 @@ const firebaseConfig = {
   appId: "1:519862097911:web:7e4c791dd1694e495200f2"
 };
 
-let app, db, auth;
+let app, db, auth, storage;
 try {
   const configToUse = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
   if (Object.keys(configToUse).length > 0) {
       app = initializeApp(configToUse);
       db = getFirestore(app);
       auth = getAuth(app);
+      storage = getStorage(app);
   }
 } catch (error) {
   console.error("Firebase init error:", error);
@@ -55,6 +57,7 @@ export default function App() {
   const [partners, setPartners] = useState([]);
   const [shopCapital, setShopCapital] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
   
   // Undo / Redo Stacks
   const [undoStack, setUndoStack] = useState([]);
@@ -69,6 +72,9 @@ export default function App() {
     type: 'income', amount: '', category: '',
     date: new Date().toISOString().split('T')[0], note: ''
   });
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [receiptPreview, setReceiptPreview] = useState('');
+  const [receiptViewModal, setReceiptViewModal] = useState({ isOpen: false, url: '' });
   
   // Edit & Filter State
   const [editingId, setEditingId] = useState(null);
@@ -97,7 +103,7 @@ export default function App() {
   const [deliveryForm, setDeliveryForm] = useState({
     date: new Date().toISOString().split('T')[0],
     totalTrips: '',
-    tripsByPartner: {} // { partnerId: number_of_trips }
+    tripsByPartner: {} 
   });
   const [deliverySelectModal, setDeliverySelectModal] = useState(false);
 
@@ -269,7 +275,6 @@ export default function App() {
     } catch(err) { alert("Redo failed: "+err.message); }
   };
 
-
   // ==========================================
   // 6. Accounting Handlers (บัญชีหลัก)
   // ==========================================
@@ -282,6 +287,18 @@ export default function App() {
     });
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // จำกัด 5MB
+        alert("ไฟล์ใหญ่เกินไป (ต้องไม่เกิน 5MB)");
+        return;
+      }
+      setReceiptFile(file);
+      setReceiptPreview(URL.createObjectURL(file));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user || !db || !isAdmin) { alert('คุณไม่มีสิทธิ์แก้ไขข้อมูล'); return; }
@@ -289,7 +306,34 @@ export default function App() {
     if (!formData.category) { alert('กรุณาเลือกหมวดหมู่'); return; }
     if (!formData.date) { alert('กรุณาระบุวันที่'); return; }
 
-    const payload = { ...formData, amount: Number(formData.amount), updatedAt: serverTimestamp() };
+    setIsUploading(true);
+    let finalReceiptUrl = editingId ? records.find(r => r.id === editingId)?.receiptUrl || null : null;
+
+    // ถ้ายกเลิกรูปที่มีอยู่
+    if (editingId && !receiptPreview) {
+        finalReceiptUrl = null; 
+    }
+
+    // ถ้าอัปโหลดรูปใหม่
+    if (receiptFile) {
+        try {
+            const storageRef = ref(storage, `receipts/${Date.now()}_${receiptFile.name}`);
+            const snapshot = await uploadBytes(storageRef, receiptFile);
+            finalReceiptUrl = await getDownloadURL(snapshot.ref);
+        } catch (err) {
+            console.error("Upload error:", err);
+            alert("อัปโหลดสลิปล้มเหลว: " + err.message);
+            setIsUploading(false);
+            return;
+        }
+    }
+
+    const payload = { 
+        ...formData, 
+        amount: Number(formData.amount), 
+        receiptUrl: finalReceiptUrl,
+        updatedAt: serverTimestamp() 
+    };
 
     try {
       if (editingId) {
@@ -304,14 +348,22 @@ export default function App() {
         recordAction({ type: 'single', col: 'accounting_records', docId: docRef.id, oldData: null, newData: payload });
         await logAction('CREATE', { id: docRef.id, ...payload });
       }
+      // เคลียร์ฟอร์ม
       setFormData({ type: formData.type, amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
-    } catch (err) { alert("เกิดข้อผิดพลาด: " + err.message); }
+      setReceiptFile(null);
+      setReceiptPreview('');
+    } catch (err) { 
+        alert("เกิดข้อผิดพลาด: " + err.message); 
+    }
+    setIsUploading(false);
   };
 
   const handleEdit = (record) => {
     if(!isAdmin) return;
     setEditingId(record.id);
     setFormData({ type: record.type, amount: record.amount.toString(), category: record.category, date: record.date, note: record.note || '' });
+    setReceiptFile(null);
+    setReceiptPreview(record.receiptUrl || '');
     const formElement = document.getElementById('record-form');
     if (formElement) formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
@@ -329,6 +381,8 @@ export default function App() {
   const cancelEdit = () => {
     setEditingId(null);
     setFormData({ type: 'income', amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
+    setReceiptFile(null);
+    setReceiptPreview('');
   };
 
   // ==========================================
@@ -362,7 +416,7 @@ export default function App() {
       try {
           const batch = writeBatch(db);
           const newRecordRef = doc(collection(db, 'accounting_records'));
-          const recordPayload = { type: 'expense', amount: partner.pendingWage, category: 'ค่าแรง', date: new Date().toISOString().split('T')[0], note: `จ่ายค่าแรง: ${partner.name}`, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+          const recordPayload = { type: 'expense', amount: partner.pendingWage, category: 'ค่าแรง', date: new Date().toISOString().split('T')[0], note: `จ่ายค่าแรง: ${partner.name}`, receiptUrl: null, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
           
           batch.set(newRecordRef, recordPayload);
           batch.update(doc(db, 'accounting_partners', partner.id), { pendingWage: 0 });
@@ -436,7 +490,6 @@ export default function App() {
           const sellNames = [];
           const undoItems = [];
 
-          // รวบรวมยอด
           wageForm.prepPartners.forEach(id => {
               earningsMap[id] = (earningsMap[id] || 0) + prepPerPerson;
               const p = partners.find(x => x.id === id);
@@ -448,7 +501,6 @@ export default function App() {
               if(p) sellNames.push(p.name);
           });
 
-          // บันทึกยอดอัปเดตใส่พาร์ทเนอร์
           Object.keys(earningsMap).forEach(partnerId => {
               const partner = partners.find(p => p.id === partnerId);
               if (partner) {
@@ -458,7 +510,6 @@ export default function App() {
               }
           });
 
-          // บันทึกประวัติ
           const logRef = doc(collection(db, 'accounting_wage_logs'));
           const logData = {
               logType: 'boxes', date: wageForm.date, boxes,
@@ -483,16 +534,12 @@ export default function App() {
      const value = parseInt(valueStr) || 0;
      const totalTrips = Number(deliveryForm.totalTrips) || 0;
      
-     // หาจำนวนรอบที่ถูกจ่ายไปแล้วให้คนอื่นๆ (ไม่รวมคนที่กำลังพิมพ์อยู่)
      let sumOthers = 0;
      Object.keys(deliveryForm.tripsByPartner).forEach(id => {
          if (id !== partnerId) sumOthers += (deliveryForm.tripsByPartner[id] || 0);
      });
 
-     // ล็อคไม่ให้ใส่เกินรอบรวม
-     if (sumOthers + value > totalTrips) {
-         return; // ไม่ให้อัปเดตค่าถ้ามันเกิน
-     }
+     if (sumOthers + value > totalTrips) return; 
 
      setDeliveryForm(prev => ({
          ...prev,
@@ -579,10 +626,8 @@ export default function App() {
   const totalPendingWages = partners.reduce((sum, p) => sum + (Number(p.pendingWage) || 0), 0);
   const netProfitLoss = balance - Number(shopCapital || 0) - totalPendingWages;
 
-  // ฟังก์ชันดึงประวัติส่วนตัวของ Partner แต่ละคน
   const getPartnerStatement = (partner) => {
       let stmts = [];
-      // รายได้จาก wageHistory
       wageHistory.forEach(log => {
           if (log.logType === 'delivery') {
               const d = log.deliveryDetails?.find(x => x.name === partner.name);
@@ -594,7 +639,6 @@ export default function App() {
               if (amount > 0) stmts.push({ date: log.date, text: `ค่าแรง: ${text.join(' + ')} (ยอดขาย ${log.boxes} กล่อง)`, amount, isIncome: true, realDate: log.createdAt });
           }
       });
-      // รายจ่ายจากการเบิก (records)
       records.forEach(r => {
           if (r.note === `จ่ายค่าแรง: ${partner.name}` || r.note.includes(partner.name)) {
               if (r.type === 'expense' && r.category === 'ค่าแรง') {
@@ -602,7 +646,6 @@ export default function App() {
               }
           }
       });
-      // เรียงจากใหม่ไปเก่า
       stmts.sort((a,b) => {
          const dA = a.realDate?.toMillis ? a.realDate.toMillis() : new Date(a.date).getTime();
          const dB = b.realDate?.toMillis ? b.realDate.toMillis() : new Date(b.date).getTime();
@@ -650,7 +693,7 @@ export default function App() {
 
       <div className="max-w-4xl mx-auto p-3 md:p-6 space-y-4 md:space-y-6">
         
-        {/* Dashboard - 6 Cards Layout */}
+        {/* Dashboard */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500 flex flex-col justify-between">
             <p className="text-xs md:text-sm text-gray-500 font-medium">รายรับรวม</p>
@@ -717,7 +760,6 @@ export default function App() {
             ) : (
               partners.map((partner) => (
                 <div key={partner.id} className="border border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-shadow bg-white relative group">
-                  {/* ปุ่ม Info ตรวจสอบประวัติ */}
                   <button 
                      onClick={() => setPartnerDetailsModal({ isOpen: true, partner })} 
                      className="absolute top-2 right-2 text-blue-300 hover:text-blue-600 transition-colors p-1"
@@ -759,9 +801,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* ========================================== */}
         {/* ฟังก์ชันคำนวณค่าแรงแบบแอดวานซ์ (แสดงเฉพาะ Admin) */}
-        {/* ========================================== */}
         {isAdmin && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             
@@ -771,10 +811,7 @@ export default function App() {
                 <h2 className="text-sm md:text-base font-semibold text-orange-800 flex items-center gap-1.5">
                   <Calculator className="w-4 h-4" /> ค่าแรงยอดขาย (กล่อง)
                 </h2>
-                <button 
-                  onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })}
-                  className="text-orange-600 hover:text-orange-800 bg-orange-100 p-1.5 rounded transition" title="ตั้งค่าเรท"
-                >
+                <button onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })} className="text-orange-600 hover:text-orange-800 bg-orange-100 p-1.5 rounded transition" title="ตั้งค่าเรท">
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
@@ -805,10 +842,7 @@ export default function App() {
                 <h2 className="text-sm md:text-base font-semibold text-purple-800 flex items-center gap-1.5">
                   <Truck className="w-4 h-4" /> ค่าแรงจัดส่ง (รอบ)
                 </h2>
-                <button 
-                  onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })}
-                  className="text-purple-600 hover:text-purple-800 bg-purple-100 p-1.5 rounded transition" title="ตั้งค่าเรท"
-                >
+                <button onClick={() => setWageSettingsModal({ isOpen: true, prepRate: wageSettings.prepRate, sellRate: wageSettings.sellRate, deliveryRate: wageSettings.deliveryRate })} className="text-purple-600 hover:text-purple-800 bg-purple-100 p-1.5 rounded transition" title="ตั้งค่าเรท">
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
@@ -817,11 +851,7 @@ export default function App() {
                    <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" />
                    <input type="number" min="0" placeholder="จำนวนรอบรวม" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-1/2 p-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600" />
                 </div>
-                <button 
-                  type="button" 
-                  onClick={() => setDeliverySelectModal(true)} 
-                  className={`w-full p-2 border rounded-lg text-sm flex items-center justify-between transition ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
-                >
+                <button type="button" onClick={() => setDeliverySelectModal(true)} className={`w-full p-2 border rounded-lg text-sm flex items-center justify-between transition ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
                   <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
                   <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
                 </button>
@@ -836,10 +866,7 @@ export default function App() {
 
         {/* แสดงประวัติการคำนวณค่าแรง (แยกจากบัญชีหลัก) */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <button 
-             onClick={() => setIsWageHistoryOpen(!isWageHistoryOpen)}
-             className="w-full p-4 bg-orange-50/50 hover:bg-orange-100/50 border-b border-orange-100 flex justify-between items-center transition"
-          >
+          <button onClick={() => setIsWageHistoryOpen(!isWageHistoryOpen)} className="w-full p-4 bg-orange-50/50 hover:bg-orange-100/50 border-b border-orange-100 flex justify-between items-center transition">
             <div className="flex items-center gap-2">
                <History className="w-5 h-5 text-orange-600" />
                <h3 className="font-semibold text-orange-800">ประวัติคำนวณค่าแรง (กล่อง/จัดส่ง)</h3>
@@ -932,14 +959,34 @@ export default function App() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
                   <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-2.5 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm" placeholder="ระบุเพิ่มเติม..." />
                 </div>
+                
+                {/* ระบบแนบสลิป */}
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">แนบสลิป/ใบเสร็จ (ไม่เกิน 5MB)</label>
+                  <div className="flex items-center gap-3">
+                    <label className={`flex items-center justify-center ${isUploading ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50 hover:bg-gray-100 cursor-pointer'} text-gray-600 border border-gray-300 border-dashed rounded-lg p-2.5 transition w-full sm:w-auto`}>
+                       <Camera className="w-5 h-5 mr-2" />
+                       <span className="text-sm font-medium">{isUploading ? 'กำลังอัปโหลด...' : (receiptPreview ? 'เปลี่ยนรูป' : 'อัปโหลดรูปภาพ')}</span>
+                       <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={isUploading} />
+                    </label>
+                    {receiptPreview && (
+                       <div className="relative">
+                          <img src={receiptPreview} alt="preview" className="h-12 w-12 object-cover rounded-md border border-gray-200 shadow-sm cursor-pointer" onClick={() => setReceiptViewModal({ isOpen: true, url: receiptPreview })} />
+                          <button type="button" onClick={() => { setReceiptFile(null); setReceiptPreview(''); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:bg-red-600">
+                            <X className="w-3 h-3" />
+                          </button>
+                       </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition shadow-sm">
-                  <Check className="w-5 h-5" /> {editingId ? 'บันทึกการแก้ไขบัญชี' : 'บันทึกลงบัญชี'}
+                <button type="submit" disabled={isUploading} className={`flex-1 ${isUploading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'} text-white py-3 rounded-lg font-bold flex justify-center items-center gap-2 transition shadow-sm`}>
+                  {isUploading ? <span className="animate-pulse">กำลังบันทึก...</span> : <><Check className="w-5 h-5" /> {editingId ? 'บันทึกการแก้ไขบัญชี' : 'บันทึกลงบัญชี'}</>}
                 </button>
                 {editingId && (
-                  <button type="button" onClick={cancelEdit} className="py-3 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex justify-center items-center transition">ยกเลิกการแก้ไข</button>
+                  <button type="button" onClick={cancelEdit} disabled={isUploading} className="py-3 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium flex justify-center items-center transition">ยกเลิกการแก้ไข</button>
                 )}
               </div>
             </form>
@@ -953,31 +1000,22 @@ export default function App() {
           </div>
           <div className="flex gap-2 w-full">
             <input 
-              type="month" 
-              value={filterMonth} 
-              onChange={(e) => setFilterMonth(e.target.value)}
-              onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
+              type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
               className="p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500 w-full bg-white text-gray-900"
             />
             <select 
-              value={filterCategory} 
-              onChange={(e) => setFilterCategory(e.target.value)}
+              value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
               className="p-2 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500 w-full bg-white text-gray-900"
             >
               <option value="">ทุกหมวดหมู่</option>
-              {[...categories.income, ...categories.expense].map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
+              {[...categories.income, ...categories.expense].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
             </select>
           </div>
         </div>
 
         {/* Transaction History List (บัญชีหลัก) */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <button 
-             onClick={() => setIsMainHistoryOpen(!isMainHistoryOpen)}
-             className="w-full p-4 bg-gray-50 hover:bg-gray-100 border-b border-gray-200 flex justify-between items-center transition"
-          >
+          <button onClick={() => setIsMainHistoryOpen(!isMainHistoryOpen)} className="w-full p-4 bg-gray-50 hover:bg-gray-100 border-b border-gray-200 flex justify-between items-center transition">
             <div className="flex items-center gap-2">
                <History className="w-5 h-5 text-gray-600" />
                <h3 className="font-semibold text-gray-700">ประวัติบัญชีกองกลาง</h3>
@@ -1000,7 +1038,14 @@ export default function App() {
                         {record.type === 'income' ? <PlusCircle className="w-5 h-5" /> : <MinusCircle className="w-5 h-5" />}
                       </div>
                       <div className="overflow-hidden">
-                        <p className="font-semibold text-gray-800 text-sm md:text-base truncate">{record.category}</p>
+                        <div className="flex items-center gap-2">
+                           <p className="font-semibold text-gray-800 text-sm md:text-base truncate">{record.category}</p>
+                           {record.receiptUrl && (
+                             <button onClick={() => setReceiptViewModal({ isOpen: true, url: record.receiptUrl })} className="text-blue-500 hover:text-blue-700" title="ดูสลิป">
+                               <ImageIcon className="w-4 h-4" />
+                             </button>
+                           )}
+                        </div>
                         <p className="text-xs text-gray-500 break-words">{record.date} {record.note ? `• ${record.note}` : ''}</p>
                       </div>
                     </div>
@@ -1032,6 +1077,18 @@ export default function App() {
       {/* ==================================================== */}
       {/* MODALS SECTION */}
       {/* ==================================================== */}
+      
+      {/* Modal ดูรูปสลิป */}
+      {receiptViewModal.isOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[60] backdrop-blur-sm" onClick={() => setReceiptViewModal({ isOpen: false, url: '' })}>
+          <div className="relative max-w-2xl w-full flex flex-col items-center">
+            <button onClick={() => setReceiptViewModal({ isOpen: false, url: '' })} className="absolute -top-10 right-0 text-white hover:text-gray-300">
+               <X className="w-8 h-8" />
+            </button>
+            <img src={receiptViewModal.url} alt="Receipt" className="max-h-[85vh] w-auto object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
+          </div>
+        </div>
+      )}
 
       {/* Modal Login */}
       {showLoginModal && (
@@ -1169,7 +1226,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal เลือกคนส่งของ (ป้อนตัวเลขรอบ) */}
+      {/* Modal เลือกคนส่งของ */}
       {deliverySelectModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
@@ -1211,7 +1268,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal ดูประวัติส่วนตัว (Face Card Details) */}
+      {/* Modal ดูประวัติส่วนตัว */}
       {partnerDetailsModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
