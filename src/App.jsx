@@ -102,7 +102,7 @@ export default function App() {
 
   const [isMainHistoryOpen, setIsMainHistoryOpen] = useState(true);
   const [isWageHistoryOpen, setIsWageHistoryOpen] = useState(true);
-  const [isCostSectionOpen, setIsCostSectionOpen] = useState(false); // ค่าเริ่มต้นปิดไว้
+  const [isCostSectionOpen, setIsCostSectionOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     type: 'income', amount: '', category: '', date: new Date().toISOString().split('T')[0], note: ''
@@ -135,7 +135,7 @@ export default function App() {
   const [deliveryForm, setDeliveryForm] = useState({
     date: new Date().toISOString().split('T')[0], totalTrips: '', tripsByPartner: {} 
   });
-  const [deliverySelectModal, setDeliverySelectModal] = useState({ isOpen: false });
+  const [deliverySelectModal, setDeliverySelectModal] = useState(false);
 
   const [costProfiles, setCostProfiles] = useState([]);
   const [costFormModal, setCostFormModal] = useState({ isOpen: false, mode: 'add', id: null });
@@ -147,11 +147,12 @@ export default function App() {
   });
   const [costDetailsModal, setCostDetailsModal] = useState({ isOpen: false, profile: null });
 
-  const categoriesList = {
+  // แก้ไขให้กลับมาใช้ชื่อ categories (ตัวปัญหาที่ทำให้เกิด Blank Screen)
+  const categories = {
     income: ['ขายสินค้า', 'เงินปันผล', 'รายรับอื่นๆ'],
     expense: ['ค่าแรง', 'ค่าจัดส่ง', 'ค่าวัตถุดิบ', 'ค่าเช่าที่', 'การตลาด', 'รายจ่ายอื่นๆ']
   };
-  const allCategories = [...categoriesList.income, ...categoriesList.expense];
+  const allCategories = [...categories.income, ...categories.expense];
 
   // ==========================================
   // Effects
@@ -600,7 +601,7 @@ export default function App() {
          recordAction({ type: 'batch', items: undoItems });
 
          setDeliveryForm({ date: new Date().toISOString().split('T')[0], totalTrips: '', tripsByPartner: {} });
-         setDeliverySelectModal({ isOpen: false });
+         setDeliverySelectModal(false);
      } catch (err) { alert('เกิดข้อผิดพลาด: ' + err.message); }
   };
 
@@ -993,11 +994,11 @@ export default function App() {
                   <div className="flex gap-2">
                      <div className="w-1/2 relative">
                         <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-orange-600 z-10">วันที่</span>
-                        <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
+                        <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
                      </div>
                      <div className="w-1/2 relative">
                         <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-orange-600 z-10">จำนวนกล่อง</span>
-                        <input type="number" min="0" placeholder="0" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-full p-3 h-[52px] appearance-none text-left block border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
+                        <input type="number" min="0" placeholder="0" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
                      </div>
                   </div>
                   <div className="flex gap-2">
@@ -1032,14 +1033,14 @@ export default function App() {
                   <div className="flex gap-2">
                      <div className="w-1/2 relative">
                         <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-purple-600 z-10">วันที่</span>
-                        <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
+                        <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
                      </div>
                      <div className="w-1/2 relative">
                         <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-purple-600 z-10">จำนวนรอบรวม</span>
-                        <input type="number" min="0" placeholder="0" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-full p-3 h-[52px] appearance-none text-left block border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
+                        <input type="number" min="0" placeholder="0" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-full p-3 border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
                      </div>
                   </div>
-                  <button type="button" onClick={() => setDeliverySelectModal({ isOpen: true })} className={`w-full p-3 h-[52px] border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-purple-200 text-gray-500 hover:bg-purple-50'}`}>
+                  <button type="button" onClick={() => setDeliverySelectModal(true)} className={`w-full p-3 border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
                     <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
                     <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
                   </button>
@@ -1074,22 +1075,22 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 <div className="relative">
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">จำนวนเงิน (บาท)*</span>
-                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="0.00" />
+                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="0.00" />
                 </div>
                 <div className="relative">
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">หมวดหมู่*</span>
-                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
+                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
                     <option value="" disabled>-- เลือกหมวดหมู่ --</option>
                     {categories[formData.type].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
                   </select>
                 </div>
                 <div className="relative">
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">วันที่*</span>
-                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" />
+                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" />
                 </div>
                 <div className="relative">
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">หมายเหตุ</span>
-                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="ระบุเพิ่มเติม..." />
+                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="ระบุเพิ่มเติม..." />
                 </div>
                 
                 {/* ระบบแนบสลิป */}
@@ -1127,19 +1128,19 @@ export default function App() {
         {/* Filters (iPad/Mobile Optimized with Multi-select) */}
         <div className="flex flex-col md:flex-row items-start md:items-end gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 transition-all duration-300 z-10 relative">
           
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            <div className="flex flex-col w-full sm:flex-1 relative">
+          <div className="flex flex-row gap-3 w-full md:w-auto">
+            <div className="flex flex-col flex-1 relative">
               <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">เริ่มวันที่</span>
               <input 
                 type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                className="w-full sm:w-36 p-3 h-[46px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
+                className="w-full p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
               />
             </div>
-            <div className="flex flex-col w-full sm:flex-1 relative">
+            <div className="flex flex-col flex-1 relative">
               <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">ถึงวันที่</span>
               <input 
                 type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                className="w-full sm:w-36 p-3 h-[46px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
+                className="w-full p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
               />
             </div>
           </div>
@@ -1148,7 +1149,7 @@ export default function App() {
             <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">หมวดหมู่ (เลือกได้หลายอัน)</span>
             <button 
               onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
-              className="w-full p-3 h-[46px] border border-gray-300 rounded-xl text-left text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none flex justify-between items-center transition-all shadow-sm"
+              className="w-full p-3 min-h-[48px] border border-gray-300 rounded-xl text-left text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none flex justify-between items-center transition-all shadow-sm"
             >
               <span className="truncate pr-2">{filterCategories.length === 0 ? 'ทุกหมวดหมู่' : filterCategories.join(', ')}</span>
               <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
@@ -1181,7 +1182,7 @@ export default function App() {
              <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">ซิงค์ค่าแรงตามตัวกรอง</span>
              <button 
                 onClick={() => setSyncWageFilter(!syncWageFilter)}
-                className={`w-full sm:w-auto px-4 h-[46px] border rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] shadow-sm ${syncWageFilter ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+                className={`w-full sm:w-auto px-4 min-h-[48px] border rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] shadow-sm ${syncWageFilter ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
              >
                 <RefreshCw className={`w-4 h-4 ${syncWageFilter ? 'animate-spin-slow' : ''}`} /> {syncWageFilter ? 'เปิดซิงค์แล้ว' : 'ปิดซิงค์ (ดูยอดปัจจุบัน)'}
              </button>
@@ -1191,7 +1192,7 @@ export default function App() {
              <div className="flex flex-col w-full sm:w-auto mt-2 md:mt-0 md:ml-auto">
                <button 
                  onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategories([]); setSyncWageFilter(false); }} 
-                 className="w-full sm:w-auto h-[46px] px-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1 border border-red-100"
+                 className="w-full sm:w-auto min-h-[48px] px-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1 border border-red-100"
                >
                  <X className="w-4 h-4"/> ล้างตัวกรอง
                </button>
@@ -1430,7 +1431,7 @@ export default function App() {
                   type={partnerModal.mode === 'add' ? 'text' : 'number'}
                   step={partnerModal.mode === 'add' ? undefined : 'any'} min="0"
                   value={partnerModal.value} onChange={(e) => setPartnerModal({...partnerModal, value: e.target.value})}
-                  className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
+                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                   placeholder={partnerModal.mode === 'add' ? 'ชื่อบุคคล' : '0.00'} autoFocus
                 />
               </div>
@@ -1453,7 +1454,7 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ค่าแรงทำไก่ (บาท/กล่อง)</label>
                 <input type="number" step="any" min="0" required
                   value={wageSettingsModal.prepRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, prepRate: e.target.value})}
-                  className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
+                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                   placeholder="0.00" autoFocus
                 />
               </div>
@@ -1461,7 +1462,7 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ค่าแรงขายไก่ (บาท/กล่อง)</label>
                 <input type="number" step="any" min="0" required
                   value={wageSettingsModal.sellRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, sellRate: e.target.value})}
-                  className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
+                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                   placeholder="0.00"
                 />
               </div>
@@ -1469,7 +1470,7 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ค่าจัดส่ง (บาท/รอบ)</label>
                 <input type="number" step="any" min="0" required
                   value={wageSettingsModal.deliveryRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, deliveryRate: e.target.value})}
-                  className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
+                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                   placeholder="0.00"
                 />
               </div>
@@ -1526,7 +1527,7 @@ export default function App() {
                          type="number" min="0" step="1" placeholder="0"
                          value={currentTrips || ''}
                          onChange={(e) => handleDeliveryTripChange(p.id, e.target.value)}
-                         className="w-16 p-2 h-[40px] text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold text-purple-600 bg-white transition-all appearance-none"
+                         className="w-16 p-2 text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold text-purple-600 bg-white transition-all appearance-none"
                        />
                        <span className="text-xs text-gray-500 w-6">รอบ</span>
                     </div>
@@ -1611,7 +1612,7 @@ export default function App() {
                        <label className="block text-sm font-bold text-gray-700 mb-1">ชื่อสูตรต้นทุน</label>
                        <input 
                          type="text" required value={costForm.name} onChange={e => handleCostFieldChange('name', e.target.value)}
-                         className="w-full p-3 h-[52px] border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
+                         className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
                          placeholder="เช่น เมนูไก่ทอดชีส 5 ชิ้น"
                        />
                     </div>
@@ -1620,7 +1621,7 @@ export default function App() {
                        <div className="flex gap-2">
                            <input 
                              type="number" min="1" step="any" required value={costForm.yieldPieces} onChange={e => handleCostFieldChange('yieldPieces', e.target.value)}
-                             className="w-full p-3 h-[52px] border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm text-center font-bold text-teal-700"
+                             className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm text-center font-bold text-teal-700"
                              placeholder="25"
                            />
                            <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 flex items-center justify-center text-sm font-medium text-gray-600">ชิ้น</div>
@@ -1647,17 +1648,17 @@ export default function App() {
                           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                              <div className="md:col-span-4">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ชื่อวัตถุดิบ</label>
-                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ไก่สด, ผงหมัก"/>
+                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ไก่สด, ผงหมัก"/>
                              </div>
                              <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ราคาที่ซื้อมา (฿)</label>
-                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="฿"/>
+                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="฿"/>
                              </div>
                              <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ปริมาณที่ได้</label>
                                 <div className="flex gap-1">
-                                    <input type="number" required min="0.01" step="any" value={ing.qtyBought} onChange={e => handleCostIngredientChange(ing.id, 'qtyBought', e.target.value)} className="w-2/3 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 text-center" placeholder="จำนวน"/>
-                                    <input type="text" value={ing.unit} onChange={e => handleCostIngredientChange(ing.id, 'unit', e.target.value)} className="w-1/3 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white text-center" placeholder="หน่วย"/>
+                                    <input type="number" required min="0.01" step="any" value={ing.qtyBought} onChange={e => handleCostIngredientChange(ing.id, 'qtyBought', e.target.value)} className="w-2/3 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 text-center" placeholder="จำนวน"/>
+                                    <input type="text" value={ing.unit} onChange={e => handleCostIngredientChange(ing.id, 'unit', e.target.value)} className="w-1/3 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white text-center" placeholder="หน่วย"/>
                                 </div>
                              </div>
                              <div className="md:col-span-2 text-right pb-2 hidden md:block">
@@ -1670,15 +1671,15 @@ export default function App() {
                              <div className="md:col-span-7 mt-1 md:mt-0">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ปริมาณที่ใช้</label>
                                 <div className="flex gap-2">
-                                    <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-1/2 p-2.5 h-[42px] border border-teal-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-teal-50/30 text-teal-700 font-bold text-center" placeholder="จำนวนที่ใช้"/>
-                                    <select value={ing.usageType} onChange={e => handleCostIngredientChange(ing.id, 'usageType', e.target.value)} className="w-1/2 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white">
+                                    <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-1/2 p-2.5 border border-teal-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-teal-50/30 text-teal-700 font-bold text-center" placeholder="จำนวนที่ใช้"/>
+                                    <select value={ing.usageType} onChange={e => handleCostIngredientChange(ing.id, 'usageType', e.target.value)} className="w-1/2 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white">
                                         <option value="per_recipe">ต่อ {costForm.yieldPieces || 'X'} ชิ้น (สูตรรวม)</option>
                                         <option value="per_piece">ต่อ 1 ชิ้น</option>
                                     </select>
                                 </div>
                              </div>
                              
-                             <div className="md:col-span-5 flex flex-col justify-end text-right bg-gray-50 rounded-lg p-2 border border-gray-100 mt-2 md:mt-0 h-[52px]">
+                             <div className="md:col-span-5 flex flex-col justify-end text-right bg-gray-50 rounded-lg p-2 border border-gray-100 mt-2 md:mt-0 h-[42px]">
                                 <span className="text-[10px] text-gray-500 block mb-0.5">ต้นทุนเฉพาะชิ้นนี้ =</span>
                                 <span className="font-bold text-teal-600 text-sm">
                                    ฿{calcIngCostPerPiece(ing, costForm.yieldPieces).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}
@@ -1702,19 +1703,19 @@ export default function App() {
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-in fade-in duration-300">
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">กำลังไฟ (วัตต์)</label>
-                             <input type="number" min="0" value={costForm.electricity.watts} onChange={e => handleCostElectChange('watts', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 1200"/>
+                             <input type="number" min="0" value={costForm.electricity.watts} onChange={e => handleCostElectChange('watts', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 1200"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">ค่าไฟ (บาท/หน่วย)</label>
-                             <input type="number" min="0" step="any" value={costForm.electricity.unitPrice} onChange={e => handleCostElectChange('unitPrice', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 5"/>
+                             <input type="number" min="0" step="any" value={costForm.electricity.unitPrice} onChange={e => handleCostElectChange('unitPrice', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 5"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">เวลาทอด (นาที)</label>
-                             <input type="number" min="0" value={costForm.electricity.minutes} onChange={e => handleCostElectChange('minutes', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 20"/>
+                             <input type="number" min="0" value={costForm.electricity.minutes} onChange={e => handleCostElectChange('minutes', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 20"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">ทอดได้กี่ชิ้น/รอบ?</label>
-                             <input type="number" min="1" value={costForm.electricity.piecesPerBatch} onChange={e => handleCostElectChange('piecesPerBatch', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 15"/>
+                             <input type="number" min="1" value={costForm.electricity.piecesPerBatch} onChange={e => handleCostElectChange('piecesPerBatch', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 15"/>
                           </div>
                        </div>
                     )}
@@ -1726,15 +1727,15 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">1 กล่อง ใส่กี่ชิ้น?</label>
-                           <input type="number" min="1" required value={costForm.boxConfig.piecesPerBox} onChange={e => handleCostBoxChange('piecesPerBox', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-700 text-center" placeholder="เช่น 5"/>
+                           <input type="number" min="1" required value={costForm.boxConfig.piecesPerBox} onChange={e => handleCostBoxChange('piecesPerBox', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-700 text-center" placeholder="เช่น 5"/>
                         </div>
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">ค่ากล่อง/ซอส/แพ็คเกจ (฿)</label>
-                           <input type="number" min="0" step="any" value={costForm.boxConfig.packagingCost} onChange={e => handleCostBoxChange('packagingCost', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
+                           <input type="number" min="0" step="any" value={costForm.boxConfig.packagingCost} onChange={e => handleCostBoxChange('packagingCost', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
                         </div>
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">ค่าแรงแพ็ค (฿/กล่อง)</label>
-                           <input type="number" min="0" step="any" value={costForm.boxConfig.laborCost} onChange={e => handleCostBoxChange('laborCost', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
+                           <input type="number" min="0" step="any" value={costForm.boxConfig.laborCost} onChange={e => handleCostBoxChange('laborCost', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
                         </div>
                     </div>
                  </div>
