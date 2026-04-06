@@ -11,7 +11,7 @@ import {
   X, Check, Filter, Users, UserPlus, Banknote, Settings,
   LogOut, Lock, Calculator, ChefHat, ShoppingBag, History,
   Undo, Redo, ChevronDown, ChevronUp, Info, Truck, Camera, Image as ImageIcon,
-  PieChart, ClipboardList, Plus, Zap, Box
+  PieChart, ClipboardList, Plus, Zap, Box, RefreshCw
 } from 'lucide-react';
 
 // ==========================================
@@ -39,17 +39,13 @@ try {
   console.error("Firebase init error:", error);
 }
 
-// ==========================================
-// 2. ตั้งค่าระบบ Security & Webhook
-// ==========================================
 const GOOGLE_SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxMeGK6Bzv9FyIc6jlsMPWCtUqxyppxmD4eLTnUtkkrBHRFuwKluWsbOroYf_FF8Bae8A/exec";
 const ADMIN_PIN = "842019";
 
-// สไตล์ของ Scrollbar แบบมินิมอล (สไตล์ iOS)
 const scrollbarClass = "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-gray-400";
 
 // ==========================================
-// 3. iOS Animated Modal Component
+// 2. iOS Animated Modal Component
 // ==========================================
 const AnimatedModal = ({ isOpen, onClose, children, maxWidth = "max-w-sm", originClass = "origin-center", bgClass = "bg-white", pClass="p-6" }) => {
   const [render, setRender] = useState(isOpen);
@@ -87,7 +83,7 @@ const AnimatedModal = ({ isOpen, onClose, children, maxWidth = "max-w-sm", origi
 };
 
 // ==========================================
-// 4. Main Component
+// 3. Main Component
 // ==========================================
 export default function App() {
   const [user, setUser] = useState(null);
@@ -101,74 +97,64 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   
-  // Undo / Redo Stacks
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
 
-  // UI Collapse States
   const [isMainHistoryOpen, setIsMainHistoryOpen] = useState(true);
   const [isWageHistoryOpen, setIsWageHistoryOpen] = useState(true);
-  const [isCostSectionOpen, setIsCostSectionOpen] = useState(true);
+  const [isCostSectionOpen, setIsCostSectionOpen] = useState(true); 
 
-  // Main Accounting Form State
   const [formData, setFormData] = useState({
-    type: 'income', amount: '', category: '',
-    date: new Date().toISOString().split('T')[0], note: ''
+    type: 'income', amount: '', category: '', date: new Date().toISOString().split('T')[0], note: ''
   });
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
   const [receiptViewModal, setReceiptViewModal] = useState({ isOpen: false, url: '' });
   
-  // Edit & Filter State
   const [editingId, setEditingId] = useState(null);
+  
+  // === Filter States ===
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
+  const [filterCategories, setFilterCategories] = useState([]); 
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [syncWageFilter, setSyncWageFilter] = useState(false); 
 
-  // Partner & Wage Calculation State
   const [partnerModal, setPartnerModal] = useState({ isOpen: false, mode: '', data: null, value: '' });
   const [partnerDetailsModal, setPartnerDetailsModal] = useState({ isOpen: false, partner: null });
   
-  // Settings
   const [wageSettings, setWageSettings] = useState({ prepRate: 0, sellRate: 0, deliveryRate: 0 });
   const [wageSettingsModal, setWageSettingsModal] = useState({ isOpen: false, prepRate: '', sellRate: '', deliveryRate: '' });
   const [wageHistory, setWageHistory] = useState([]); 
   
-  // Box Wage Form
   const [wageForm, setWageForm] = useState({
     date: new Date().toISOString().split('T')[0], boxes: '', prepPartners: [], sellPartners: []  
   });
   const [partnerSelectModal, setPartnerSelectModal] = useState({ isOpen: false, type: '' });
 
-  // Delivery Wage Form
   const [deliveryForm, setDeliveryForm] = useState({
     date: new Date().toISOString().split('T')[0], totalTrips: '', tripsByPartner: {} 
   });
   const [deliverySelectModal, setDeliverySelectModal] = useState({ isOpen: false });
 
-  // ==========================================
-  // Cost Profiles State (ระบบคำนวณต้นทุน)
-  // ==========================================
   const [costProfiles, setCostProfiles] = useState([]);
   const [costFormModal, setCostFormModal] = useState({ isOpen: false, mode: 'add', id: null });
   const [costForm, setCostForm] = useState({
-    name: '',
-    yieldPieces: '',
+    name: '', yieldPieces: '',
     ingredients: [{ id: Date.now(), name: '', price: '', qtyBought: '', unit: '', usage: '', usageType: 'per_recipe' }],
     electricity: { enabled: false, watts: '', unitPrice: '5', minutes: '', piecesPerBatch: '' },
     boxConfig: { piecesPerBox: '', packagingCost: '', laborCost: '' }
   });
   const [costDetailsModal, setCostDetailsModal] = useState({ isOpen: false, profile: null });
 
-
-  // Categories
-  const categories = {
+  const categoriesList = {
     income: ['ขายสินค้า', 'เงินปันผล', 'รายรับอื่นๆ'],
     expense: ['ค่าแรง', 'ค่าจัดส่ง', 'ค่าวัตถุดิบ', 'ค่าเช่าที่', 'การตลาด', 'รายจ่ายอื่นๆ']
   };
+  const allCategories = [...categoriesList.income, ...categoriesList.expense];
 
   // ==========================================
-  // Effects & Auth
+  // Effects
   // ==========================================
   useEffect(() => {
     if (!auth) { setLoading(false); return; }
@@ -255,7 +241,7 @@ export default function App() {
     return () => { unsubRecords(); unsubPartners(); unsubCapital(); unsubWageRates(); unsubWageHistory(); unsubCostProfiles(); };
   }, [user]);
 
-  // === ระบบ Login Admin ===
+  // === Authentication ===
   const handleLogin = (e) => {
     e.preventDefault();
     if (pinInput === ADMIN_PIN) {
@@ -278,7 +264,7 @@ export default function App() {
   };
 
   // ==========================================
-  // Helper & Undo/Redo Functions
+  // Helper & Undo/Redo
   // ==========================================
   const sendWebhook = (action, data) => {
     if (!GOOGLE_SHEET_WEBHOOK_URL) return;
@@ -304,44 +290,33 @@ export default function App() {
 
   const processUndoRedo = async (action, isUndo) => {
     const batch = writeBatch(db);
-    
     const applyToBatch = (item) => {
         const ref = doc(db, item.col, item.docId);
         const dataToApply = isUndo ? item.oldData : item.newData;
         if (dataToApply === null) batch.delete(ref);
         else batch.set(ref, dataToApply);
     };
-
-    if (action.type === 'single') {
-        applyToBatch(action);
-    } else if (action.type === 'batch') {
-        action.items.forEach(applyToBatch);
-    }
+    if (action.type === 'single') applyToBatch(action);
+    else if (action.type === 'batch') action.items.forEach(applyToBatch);
     await batch.commit();
   };
 
   const handleUndo = async () => {
     if (undoStack.length === 0 || !user || !db || !isAdmin) return;
     const action = undoStack[undoStack.length - 1];
-    try {
-        await processUndoRedo(action, true);
-        setUndoStack(prev => prev.slice(0, -1));
-        setRedoStack(prev => [...prev, action]);
+    try { await processUndoRedo(action, true); setUndoStack(prev => prev.slice(0, -1)); setRedoStack(prev => [...prev, action]);
     } catch(err) { alert("Undo failed: "+err.message); }
   };
 
   const handleRedo = async () => {
     if (redoStack.length === 0 || !user || !db || !isAdmin) return;
     const action = redoStack[redoStack.length - 1];
-    try {
-        await processUndoRedo(action, false);
-        setRedoStack(prev => prev.slice(0, -1));
-        setUndoStack(prev => [...prev, action]);
+    try { await processUndoRedo(action, false); setRedoStack(prev => prev.slice(0, -1)); setUndoStack(prev => [...prev, action]);
     } catch(err) { alert("Redo failed: "+err.message); }
   };
 
   // ==========================================
-  // Accounting Handlers (บัญชีหลัก)
+  // Accounting Handlers
   // ==========================================
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -355,10 +330,7 @@ export default function App() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { 
-        alert("ไฟล์ใหญ่เกินไป (ต้องไม่เกิน 5MB)");
-        return;
-      }
+      if (file.size > 5 * 1024 * 1024) return alert("ไฟล์ใหญ่เกินไป (ต้องไม่เกิน 5MB)");
       setReceiptFile(file);
       setReceiptPreview(URL.createObjectURL(file));
     }
@@ -367,13 +339,12 @@ export default function App() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user || !db || !isAdmin) { alert('คุณไม่มีสิทธิ์แก้ไขข้อมูล'); return; }
-    if (!formData.amount || Number(formData.amount) <= 0) { alert('ระบุจำนวนเงินให้ถูกต้อง'); return; }
-    if (!formData.category) { alert('กรุณาเลือกหมวดหมู่'); return; }
-    if (!formData.date) { alert('กรุณาระบุวันที่'); return; }
+    if (!formData.amount || Number(formData.amount) <= 0) return alert('ระบุจำนวนเงินให้ถูกต้อง');
+    if (!formData.category) return alert('กรุณาเลือกหมวดหมู่');
+    if (!formData.date) return alert('กรุณาระบุวันที่');
 
     setIsUploading(true);
     let finalReceiptUrl = editingId ? records.find(r => r.id === editingId)?.receiptUrl || null : null;
-
     if (editingId && !receiptPreview) finalReceiptUrl = null; 
 
     if (receiptFile) {
@@ -389,7 +360,6 @@ export default function App() {
     }
 
     const payload = { ...formData, amount: Number(formData.amount), receiptUrl: finalReceiptUrl, updatedAt: serverTimestamp() };
-
     try {
       if (editingId) {
         const oldRecord = records.find(r => r.id === editingId);
@@ -404,8 +374,7 @@ export default function App() {
         await logAction('CREATE', { id: docRef.id, ...payload });
       }
       setFormData({ type: formData.type, amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
-      setReceiptFile(null);
-      setReceiptPreview('');
+      setReceiptFile(null); setReceiptPreview('');
     } catch (err) { alert("เกิดข้อผิดพลาด: " + err.message); }
     setIsUploading(false);
   };
@@ -414,8 +383,7 @@ export default function App() {
     if(!isAdmin) return;
     setEditingId(record.id);
     setFormData({ type: record.type, amount: record.amount.toString(), category: record.category, date: record.date, note: record.note || '' });
-    setReceiptFile(null);
-    setReceiptPreview(record.receiptUrl || '');
+    setReceiptFile(null); setReceiptPreview(record.receiptUrl || '');
     const formElement = document.getElementById('record-form');
     if (formElement) formElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
@@ -433,8 +401,7 @@ export default function App() {
   const cancelEdit = () => {
     setEditingId(null);
     setFormData({ type: 'income', amount: '', category: '', date: new Date().toISOString().split('T')[0], note: '' });
-    setReceiptFile(null);
-    setReceiptPreview('');
+    setReceiptFile(null); setReceiptPreview('');
   };
 
   // ==========================================
@@ -478,7 +445,6 @@ export default function App() {
              { col: 'accounting_records', docId: newRecordRef.id, oldData: null, newData: recordPayload },
              { col: 'accounting_partners', docId: partner.id, oldData: partner, newData: {...partner, pendingWage: 0} }
           ]});
-
           await logAction('CREATE_PAY_WAGE', { id: newRecordRef.id, ...recordPayload });
       } catch (err) { alert("เกิดข้อผิดพลาด: " + err.message); }
   };
@@ -498,7 +464,7 @@ export default function App() {
   };
 
   // ==========================================
-  // Advanced Wage Calculation (ทำไก่/ขายไก่)
+  // Advanced Wage Calculation
   // ==========================================
   const handleSaveWageSettings = async (e) => {
     e.preventDefault();
@@ -580,18 +546,12 @@ export default function App() {
   const handleDeliveryTripChange = (partnerId, valueStr) => {
      const value = parseInt(valueStr) || 0;
      const totalTrips = Number(deliveryForm.totalTrips) || 0;
-     
      let sumOthers = 0;
      Object.keys(deliveryForm.tripsByPartner).forEach(id => {
          if (id !== partnerId) sumOthers += (deliveryForm.tripsByPartner[id] || 0);
      });
-
      if (sumOthers + value > totalTrips) return; 
-
-     setDeliveryForm(prev => ({
-         ...prev,
-         tripsByPartner: { ...prev.tripsByPartner, [partnerId]: value }
-     }));
+     setDeliveryForm(prev => ({ ...prev, tripsByPartner: { ...prev.tripsByPartner, [partnerId]: value } }));
   };
 
   const handleCalculateDelivery = async () => {
@@ -620,10 +580,8 @@ export default function App() {
                  if (partner) {
                      const earned = trips * rate;
                      const newWage = (partner.pendingWage || 0) + earned;
-                     
                      batch.update(doc(db, 'accounting_partners', partnerId), { pendingWage: newWage });
                      undoItems.push({ col: 'accounting_partners', docId: partnerId, oldData: partner, newData: {...partner, pendingWage: newWage} });
-                     
                      deliveryNames.push(partner.name);
                      deliveryDetails.push({ name: partner.name, trips, amount: earned });
                  }
@@ -654,26 +612,16 @@ export default function App() {
   };
 
   // ==========================================
-  // 10. Cost Profiles Handlers (ระบบคำนวณต้นทุน)
+  // Cost Profiles Handlers (ระบบคำนวณต้นทุน)
   // ==========================================
-  
-  // Helpers สำหรับการคำนวณต้นทุนให้เหมือนใน Spreadsheet เป๊ะๆ
   const calcIngCostPerPiece = (ing, yieldPieces) => {
     const price = Number(ing.price) || 0;
-    const qtyBought = Number(ing.qtyBought) || 1; // ป้องกันหาร 0
+    const qtyBought = Number(ing.qtyBought) || 1; 
     const usage = Number(ing.usage) || 0;
     const yPieces = Number(yieldPieces) || 1;
-    
     const costPerUnit = price / qtyBought;
-    
-    // ถ้าตั้งค่าเป็น "ใช้ต่อ 1 ชิ้น" (เช่น ชีส 1 ชิ้นใช้ 4g) ไม่ต้องนำไปหารจำนวนชิ้นรวม
-    if (ing.usageType === 'per_piece') {
-        return costPerUnit * usage;
-    } 
-    // ถ้าตั้งค่าเป็น "ใช้ต่อสูตรรวม" (เช่น ผงหมัก 100g ต่อไก่ 1 กก. ที่ทำได้ 25 ชิ้น) นำไปหารจำนวนชิ้นรวม
-    else {
-        return (costPerUnit * usage) / yPieces;
-    }
+    if (ing.usageType === 'per_piece') return costPerUnit * usage;
+    else return (costPerUnit * usage) / yPieces;
   };
 
   const calcElectCostPerPiece = (elec) => {
@@ -681,74 +629,36 @@ export default function App() {
     const watts = Number(elec.watts) || 0;
     const unitPrice = Number(elec.unitPrice) || 0;
     const mins = Number(elec.minutes) || 0;
-    const piecesPerBatch = Number(elec.piecesPerBatch) || 1; // ป้องกันหาร 0
-    
-    // สูตรคำนวณ: (วัตต์ / 1000) * (นาที / 60) * ค่าไฟต่อหน่วย
+    const piecesPerBatch = Number(elec.piecesPerBatch) || 1; 
     const costPerBatch = (watts / 1000) * (mins / 60) * unitPrice;
     return costPerBatch / piecesPerBatch;
   };
 
   const generateCostSummary = (form) => {
     const yieldP = Number(form.yieldPieces) || 1;
-    
     let totalIngCostPerPiece = 0;
     const ingDetails = form.ingredients.map(ing => {
         const c = calcIngCostPerPiece(ing, yieldP);
         totalIngCostPerPiece += c;
         return { ...ing, costPerPiece: c };
     });
-
     const elePerPiece = calcElectCostPerPiece(form.electricity);
     const totalPerPiece = totalIngCostPerPiece + elePerPiece;
-
     const boxP = Number(form.boxConfig.piecesPerBox) || 1;
     const packCost = Number(form.boxConfig.packagingCost) || 0;
     const labCost = Number(form.boxConfig.laborCost) || 0;
-    
-    // ต้นทุนรวมต่อกล่อง = (ต้นทุนต่อชิ้น * จำนวนชิ้น) + ค่ากล่อง + ค่าแรง
     const totalBoxCost = (totalPerPiece * boxP) + packCost + labCost;
 
-    return { 
-        ingDetails, 
-        totalIngCostPerPiece, 
-        elePerPiece, 
-        totalPerPiece, 
-        totalBoxCost 
-    };
+    return { ingDetails, totalIngCostPerPiece, elePerPiece, totalPerPiece, totalBoxCost };
   };
 
-  const handleCostFieldChange = (field, value) => {
-      setCostForm(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleCostElectChange = (field, value) => {
-      setCostForm(prev => ({ ...prev, electricity: { ...prev.electricity, [field]: value } }));
-  };
-
-  const handleCostBoxChange = (field, value) => {
-      setCostForm(prev => ({ ...prev, boxConfig: { ...prev.boxConfig, [field]: value } }));
-  };
-
-  const handleCostIngredientChange = (id, field, value) => {
-    setCostForm(prev => ({
-      ...prev,
-      ingredients: prev.ingredients.map(ing => ing.id === id ? { ...ing, [field]: value } : ing)
-    }));
-  };
-
-  const addCostIngredient = () => {
-    setCostForm(prev => ({
-      ...prev,
-      ingredients: [...prev.ingredients, { id: Date.now(), name: '', price: '', qtyBought: '', unit: '', usage: '', usageType: 'per_recipe' }]
-    }));
-  };
-
-  const removeCostIngredient = (id) => {
-    setCostForm(prev => ({
-      ...prev,
-      ingredients: prev.ingredients.filter(ing => ing.id !== id)
-    }));
-  };
+  const handleCostFieldChange = (field, value) => setCostForm(prev => ({ ...prev, [field]: value }));
+  const handleCostElectChange = (field, value) => setCostForm(prev => ({ ...prev, electricity: { ...prev.electricity, [field]: value } }));
+  const handleCostBoxChange = (field, value) => setCostForm(prev => ({ ...prev, boxConfig: { ...prev.boxConfig, [field]: value } }));
+  const handleCostIngredientChange = (id, field, value) => setCostForm(prev => ({ ...prev, ingredients: prev.ingredients.map(ing => ing.id === id ? { ...ing, [field]: value } : ing) }));
+  
+  const addCostIngredient = () => setCostForm(prev => ({ ...prev, ingredients: [...prev.ingredients, { id: Date.now(), name: '', price: '', qtyBought: '', unit: '', usage: '', usageType: 'per_recipe' }] }));
+  const removeCostIngredient = (id) => setCostForm(prev => ({ ...prev, ingredients: prev.ingredients.filter(ing => ing.id !== id) }));
 
   const handleSaveCostProfile = async (e) => {
     e.preventDefault();
@@ -756,11 +666,7 @@ export default function App() {
     if (!costForm.name.trim()) return alert("กรุณาตั้งชื่อสูตรต้นทุน");
 
     const summary = generateCostSummary(costForm);
-    const payload = {
-        ...costForm,
-        summary,
-        updatedAt: serverTimestamp()
-    };
+    const payload = { ...costForm, summary, updatedAt: serverTimestamp() };
 
     try {
         if (costFormModal.mode === 'edit' && costFormModal.id) {
@@ -773,17 +679,13 @@ export default function App() {
             recordAction({ type: 'single', col: 'accounting_cost_profiles', docId: docRef.id, oldData: null, newData: payload });
         }
         setCostFormModal({ isOpen: false, mode: 'add', id: null });
-    } catch (err) {
-        alert("บันทึกต้นทุนล้มเหลว: " + err.message);
-    }
+    } catch (err) { alert("บันทึกต้นทุนล้มเหลว: " + err.message); }
   };
 
   const openEditCostProfile = (profile) => {
     if (!isAdmin) return;
     setCostForm({
-        name: profile.name || '',
-        yieldPieces: profile.yieldPieces || '',
-        ingredients: profile.ingredients || [],
+        name: profile.name || '', yieldPieces: profile.yieldPieces || '', ingredients: profile.ingredients || [],
         electricity: profile.electricity || { enabled: false, watts: '', unitPrice: '5', minutes: '', piecesPerBatch: '' },
         boxConfig: profile.boxConfig || { piecesPerBox: '', packagingCost: '', laborCost: '' }
     });
@@ -797,14 +699,24 @@ export default function App() {
         await deleteDoc(doc(db, 'accounting_cost_profiles', profileId));
         recordAction({ type: 'single', col: 'accounting_cost_profiles', docId: profileId, oldData: profileData, newData: null });
         setCostDetailsModal({ isOpen: false, profile: null });
-    } catch (err) {
-        alert("ลบล้มเหลว: " + err.message);
-    }
+    } catch (err) { alert("ลบล้มเหลว: " + err.message); }
+  };
+
+  // ==========================================
+  // Filter Toggle Categories logic
+  // ==========================================
+  const toggleFilterCategory = (cat) => {
+      setFilterCategories(prev => {
+          if (prev.includes(cat)) return prev.filter(c => c !== cat);
+          return [...prev, cat];
+      });
   };
 
   // ==========================================
   // Computations
   // ==========================================
+  
+  // 1. กรองบัญชีหลัก
   const filteredRecords = records.filter(record => {
     let matchDate = true;
     if (filterStartDate && filterEndDate) {
@@ -814,8 +726,17 @@ export default function App() {
     } else if (filterEndDate) {
       matchDate = record.date <= filterEndDate;
     }
-    const matchCategory = filterCategory ? record.category === filterCategory : true;
+    const matchCategory = filterCategories.length > 0 ? filterCategories.includes(record.category) : true;
     return matchDate && matchCategory;
+  });
+
+  // 2. กรองประวัติค่าแรง
+  const filteredWageLogs = wageHistory.filter(log => {
+    let matchDate = true;
+    if (filterStartDate && filterEndDate) matchDate = log.date >= filterStartDate && log.date <= filterEndDate;
+    else if (filterStartDate) matchDate = log.date >= filterStartDate;
+    else if (filterEndDate) matchDate = log.date <= filterEndDate;
+    return matchDate;
   });
 
   const totals = filteredRecords.reduce((acc, curr) => {
@@ -825,8 +746,28 @@ export default function App() {
   }, { income: 0, expense: 0 });
   
   const balance = totals.income - totals.expense;
-  const totalPendingWages = partners.reduce((sum, p) => sum + (Number(p.pendingWage) || 0), 0);
-  const netProfitLoss = balance - Number(shopCapital || 0) - totalPendingWages;
+  
+  // การแสดงยอดค่าแรงรอจ่าย (พ่วงระบบ Sync Filter)
+  const globalPendingWages = partners.reduce((sum, p) => sum + (Number(p.pendingWage) || 0), 0);
+  let displayPendingWages = globalPendingWages;
+
+  if (syncWageFilter && (filterStartDate || filterEndDate)) {
+      // หายอดค่าแรงที่ "เกิดขึ้น" ในช่วงเวลานี้
+      const earnedInPeriod = filteredWageLogs.reduce((sum, log) => {
+          if (log.logType === 'delivery') return sum + (Number(log.totalAmount) || 0);
+          return sum + (Number(log.prepTotal) || 0) + (Number(log.sellTotal) || 0);
+      }, 0);
+      
+      // หายอดค่าแรงที่ "ถูกจ่ายออกไป" ในช่วงเวลานี้
+      const paidInPeriod = filteredRecords.reduce((sum, r) => {
+          if (r.type === 'expense' && r.category === 'ค่าแรง') return sum + Number(r.amount);
+          return sum;
+      }, 0);
+      
+      displayPendingWages = earnedInPeriod - paidInPeriod;
+  }
+
+  const netProfitLoss = balance - Number(shopCapital || 0) - displayPendingWages;
   const dividendPerPerson = partners.length > 0 ? (netProfitLoss / partners.length) : 0;
 
   const getPartnerStatement = (partner) => {
@@ -861,7 +802,12 @@ export default function App() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-sans text-gray-500 bg-gray-50">กำลังโหลดระบบบัญชี...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20 relative">
+      {/* Background layer for closing dropdowns */}
+      {isCategoryDropdownOpen && (
+          <div className="fixed inset-0 z-10" onClick={() => setIsCategoryDropdownOpen(false)}></div>
+      )}
+
       {/* Header */}
       <div className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-20 transition-all duration-300">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -933,9 +879,9 @@ export default function App() {
               )}
             </div>
           </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 border-orange-500 flex flex-col justify-between items-center text-center">
-            <p className="text-xs md:text-sm text-gray-500 font-medium">ค่าแรงรอจ่ายรวม</p>
-            <p className="text-lg md:text-2xl font-bold text-orange-600">฿{totalPendingWages.toLocaleString()}</p>
+          <div className={`bg-white p-4 rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 ${syncWageFilter ? 'border-indigo-500 bg-indigo-50/20' : 'border-orange-500'} flex flex-col justify-between items-center text-center`}>
+            <p className="text-xs md:text-sm text-gray-500 font-medium">{syncWageFilter ? 'ค่าแรงรอจ่าย (ช่วงนี้)' : 'ค่าแรงรอจ่ายรวม'}</p>
+            <p className={`text-lg md:text-2xl font-bold ${syncWageFilter ? 'text-indigo-600' : 'text-orange-600'}`}>฿{displayPendingWages.toLocaleString()}</p>
           </div>
           <div className={`bg-white p-4 rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-l-4 ${netProfitLoss >= 0 ? 'border-teal-500' : 'border-red-600'} flex flex-col justify-between items-center text-center col-span-2 md:col-span-1`}>
             <p className="text-xs md:text-sm text-gray-500 font-medium">สถานะร้าน (กำไร/ขาดทุน)</p>
@@ -1011,14 +957,14 @@ export default function App() {
                     <div className="w-full flex flex-col gap-2 mt-1">
                         <button 
                           onClick={() => setPartnerModal({ isOpen: true, mode: 'setWage', data: partner, value: partner.pendingWage || '' })}
-                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-50 active:scale-[0.97] transition-all duration-200 shadow-sm"
+                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-xl text-xs font-medium hover:bg-gray-50 active:scale-[0.97] transition-all duration-200 shadow-sm"
                         >
                           <Settings className="w-3.5 h-3.5" /> ตั้งยอดค่าแรง
                         </button>
                         <button 
                           onClick={() => handlePayWage(partner)}
                           disabled={!partner.pendingWage || partner.pendingWage <= 0}
-                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white active:scale-[0.97] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
+                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-xl text-xs font-bold hover:bg-blue-600 hover:text-white active:scale-[0.97] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
                         >
                           <Banknote className="w-4 h-4" /> จ่ายเงินตัดบัญชี
                         </button>
@@ -1047,15 +993,21 @@ export default function App() {
               <div className="flex-1 flex flex-col">
                 <div className="space-y-3 mb-3">
                   <div className="flex gap-2">
-                     <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
-                     <input type="number" min="0" placeholder="จำนวนกล่อง" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
+                     <div className="w-1/2 relative">
+                        <span className="absolute -top-2 left-2 bg-white px-1 text-[10px] font-semibold text-orange-600 z-10">วันที่</span>
+                        <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
+                     </div>
+                     <div className="w-1/2 relative">
+                        <span className="absolute -top-2 left-2 bg-white px-1 text-[10px] font-semibold text-orange-600 z-10">จำนวนกล่อง</span>
+                        <input type="number" min="0" placeholder="0" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-full p-3 h-[52px] appearance-none text-left block border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
+                     </div>
                   </div>
                   <div className="flex gap-2">
-                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-2 min-h-[52px] border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-2 min-h-[52px] border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-white border-orange-200 text-gray-500 hover:bg-orange-50'}`}>
                        <span className="flex items-center gap-1"><ChefHat className="w-3.5 h-3.5"/> ทำไก่</span>
                        <span className="font-bold">{wageForm.prepPartners.length} คน</span>
                      </button>
-                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-2 min-h-[52px] border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-2 min-h-[52px] border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-white border-orange-200 text-gray-500 hover:bg-orange-50'}`}>
                        <span className="flex items-center gap-1"><ShoppingBag className="w-3.5 h-3.5"/> ขายไก่</span>
                        <span className="font-bold">{wageForm.sellPartners.length} คน</span>
                      </button>
@@ -1080,10 +1032,16 @@ export default function App() {
               <div className="flex-1 flex flex-col">
                 <div className="space-y-3 mb-3">
                   <div className="flex gap-2">
-                     <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
-                     <input type="number" min="0" placeholder="จำนวนรอบรวม" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-1/2 p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
+                     <div className="w-1/2 relative">
+                        <span className="absolute -top-2 left-2 bg-white px-1 text-[10px] font-semibold text-purple-600 z-10">วันที่</span>
+                        <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
+                     </div>
+                     <div className="w-1/2 relative">
+                        <span className="absolute -top-2 left-2 bg-white px-1 text-[10px] font-semibold text-purple-600 z-10">จำนวนรอบรวม</span>
+                        <input type="number" min="0" placeholder="0" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-full p-3 h-[52px] appearance-none text-left block border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
+                     </div>
                   </div>
-                  <button type="button" onClick={() => setDeliverySelectModal({ isOpen: true })} className={`w-full p-3 h-[52px] border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                  <button type="button" onClick={() => setDeliverySelectModal({ isOpen: true })} className={`w-full p-3 h-[52px] border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-purple-200 text-gray-500 hover:bg-purple-50'}`}>
                     <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
                     <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
                   </button>
@@ -1097,6 +1055,152 @@ export default function App() {
           </div>
         )}
 
+        {/* Input Form บัญชีหลัก (ซ่อนถ้าไม่ใช่ Admin) */}
+        {isAdmin && (
+          <div id="record-form" className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-500 mt-6">
+            <h2 className="text-base md:text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              {editingId ? <Edit2 className="w-5 h-5 text-yellow-500" /> : <PlusCircle className="w-5 h-5 text-blue-500" />}
+              {editingId ? 'แก้ไขรายการบัญชี' : 'บันทึกรายการบัญชีกองกลาง'}
+            </h2>
+            
+            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
+              <div className="grid grid-cols-2 gap-3 md:gap-4">
+                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'income' } })} className={`py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 ${formData.type === 'income' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                  <PlusCircle className="w-5 h-5" /> รายรับ
+                </button>
+                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'expense' } })} className={`py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 ${formData.type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                  <MinusCircle className="w-5 h-5" /> รายจ่าย
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                <div className="relative">
+                  <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">จำนวนเงิน (บาท)*</span>
+                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="0.00" />
+                </div>
+                <div className="relative">
+                  <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">หมวดหมู่*</span>
+                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
+                    <option value="" disabled>-- เลือกหมวดหมู่ --</option>
+                    {categories[formData.type].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
+                  </select>
+                </div>
+                <div className="relative">
+                  <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">วันที่*</span>
+                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" />
+                </div>
+                <div className="relative">
+                  <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">หมายเหตุ</span>
+                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="ระบุเพิ่มเติม..." />
+                </div>
+                
+                {/* ระบบแนบสลิป */}
+                <div className="md:col-span-2 mt-1">
+                  <div className="flex items-center gap-3">
+                    <label className={`flex items-center justify-center ${isUploading ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50 hover:bg-gray-100 cursor-pointer'} text-gray-600 border border-gray-300 border-dashed rounded-xl p-3.5 transition-all duration-200 w-full sm:w-auto active:scale-[0.98]`}>
+                       <Camera className="w-5 h-5 mr-2" />
+                       <span className="text-sm font-medium">{isUploading ? 'กำลังอัปโหลด...' : (receiptPreview ? 'เปลี่ยนรูป' : 'แนบสลิป/ใบเสร็จ (ไม่เกิน 5MB)')}</span>
+                       <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={isUploading} />
+                    </label>
+                    {receiptPreview && (
+                       <div className="relative animate-in zoom-in duration-200">
+                          <img src={receiptPreview} alt="preview" className="h-14 w-14 object-cover rounded-xl border border-gray-200 shadow-sm cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setReceiptViewModal({ isOpen: true, url: receiptPreview })} />
+                          <button type="button" onClick={() => { setReceiptFile(null); setReceiptPreview(''); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-sm hover:bg-red-600 active:scale-90 transition-transform">
+                            <X className="w-3 h-3" />
+                          </button>
+                       </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button type="submit" disabled={isUploading} className={`flex-1 ${isUploading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'} text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 shadow-md`}>
+                  {isUploading ? <span className="animate-pulse">กำลังบันทึก...</span> : <><Check className="w-5 h-5" /> {editingId ? 'บันทึกการแก้ไขบัญชี' : 'บันทึกลงบัญชี'}</>}
+                </button>
+                {editingId && (
+                  <button type="button" onClick={cancelEdit} disabled={isUploading} className="py-3.5 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-medium flex justify-center items-center active:scale-[0.98] transition-all duration-200 shadow-sm">ยกเลิกการแก้ไข</button>
+                )}
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Filters (iPad/Mobile Optimized with Multi-select) */}
+        <div className="flex flex-col md:flex-row items-start md:items-end gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 transition-all duration-300 z-10 relative">
+          
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            <div className="flex flex-col w-full sm:w-auto relative">
+              <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">เริ่มวันที่</span>
+              <input 
+                type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
+                className="w-full sm:w-36 p-3 h-[46px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
+              />
+            </div>
+            <div className="flex flex-col w-full sm:w-auto relative">
+              <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">ถึงวันที่</span>
+              <input 
+                type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
+                className="w-full sm:w-36 p-3 h-[46px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col w-full md:w-48 relative">
+            <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">หมวดหมู่ (เลือกได้หลายอัน)</span>
+            <button 
+              onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+              className="w-full p-3 h-[46px] border border-gray-300 rounded-xl text-left text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none flex justify-between items-center transition-all shadow-sm"
+            >
+              <span className="truncate pr-2">{filterCategories.length === 0 ? 'ทุกหมวดหมู่' : filterCategories.join(', ')}</span>
+              <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+            </button>
+            
+            {/* Dropdown Multi-Select */}
+            {isCategoryDropdownOpen && (
+              <div className="absolute top-[70px] left-0 w-full bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                 <div className={`max-h-60 overflow-y-auto p-2 ${scrollbarClass}`}>
+                    <label className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-100">
+                        <input type="checkbox" checked={filterCategories.length === 0} onChange={() => setFilterCategories([])} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"/>
+                        <span className={`text-sm ${filterCategories.length === 0 ? 'font-bold text-blue-700' : 'font-medium text-gray-600'}`}>ดูทุกหมวดหมู่</span>
+                    </label>
+                    {allCategories.map(cat => (
+                      <label key={cat} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                          <input 
+                            type="checkbox" checked={filterCategories.includes(cat)} 
+                            onChange={() => toggleFilterCategory(cat)} 
+                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                          />
+                          <span className={`text-sm ${filterCategories.includes(cat) ? 'font-bold text-blue-700' : 'font-medium text-gray-600'}`}>{cat}</span>
+                      </label>
+                    ))}
+                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col w-full sm:w-auto relative">
+             <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">ซิงค์ค่าแรงตามตัวกรอง</span>
+             <button 
+                onClick={() => setSyncWageFilter(!syncWageFilter)}
+                className={`w-full sm:w-auto p-3 h-[46px] border rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] shadow-sm ${syncWageFilter ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+             >
+                <RefreshCw className={`w-4 h-4 ${syncWageFilter ? 'animate-spin-slow' : ''}`} /> {syncWageFilter ? 'เปิดซิงค์แล้ว' : 'ปิดซิงค์ (ดูยอดปัจจุบัน)'}
+             </button>
+          </div>
+
+          {(filterStartDate || filterEndDate || filterCategories.length > 0 || syncWageFilter) && (
+             <div className="flex flex-col w-full sm:w-auto mt-2 md:mt-0 md:ml-auto">
+               <button 
+                 onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategories([]); setSyncWageFilter(false); }} 
+                 className="w-full sm:w-auto h-[46px] px-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1 border border-red-100"
+               >
+                 <X className="w-4 h-4"/> ล้างตัวกรอง
+               </button>
+             </div>
+          )}
+        </div>
+
         {/* แสดงประวัติการคำนวณค่าแรง (แยกจากบัญชีหลัก) */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-300">
           <button onClick={() => setIsWageHistoryOpen(!isWageHistoryOpen)} className="w-full p-4 bg-orange-50/50 hover:bg-orange-100/50 border-b border-orange-100 flex justify-between items-center transition-colors duration-200">
@@ -1105,17 +1209,17 @@ export default function App() {
                <h3 className="font-semibold text-orange-800">ประวัติคำนวณค่าแรง (กล่อง/จัดส่ง)</h3>
             </div>
             <div className="flex items-center gap-2">
-               <span className="text-xs font-bold text-orange-600 bg-white px-3 py-1 rounded-full shadow-sm">{wageHistory.length} รายการ</span>
+               <span className="text-xs font-bold text-orange-600 bg-white px-3 py-1 rounded-full shadow-sm">{filteredWageLogs.length} รายการ</span>
                <ChevronDown className={`w-5 h-5 text-orange-400 transition-transform duration-300 ease-out ${isWageHistoryOpen ? 'rotate-180' : ''}`} />
             </div>
           </button>
           
           <div className={`overflow-hidden transition-all duration-300 ease-out ${isWageHistoryOpen ? 'max-h-[100vh] opacity-100' : 'max-h-0 opacity-0'}`}>
-            <div className={`max-h-[60vh] overflow-y-auto bg-white p-3 space-y-3 ${scrollbarClass}`}>
-              {wageHistory.length === 0 ? (
-                <p className="text-center py-8 text-gray-400 text-sm">ไม่พบประวัติการคำนวณ</p>
+            <div className={`max-h-96 overflow-y-auto bg-white p-3 space-y-3 ${scrollbarClass}`}>
+              {filteredWageLogs.length === 0 ? (
+                <p className="text-center py-6 text-gray-400 text-sm">ไม่พบประวัติการคำนวณ</p>
               ) : (
-                wageHistory.map(log => (
+                filteredWageLogs.map(log => (
                   <div key={log.id} className={`border rounded-2xl p-3.5 text-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-2 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${log.logType === 'delivery' ? 'bg-purple-50/30 border-purple-100 hover:bg-purple-50' : 'bg-orange-50/30 border-orange-100 hover:bg-orange-50'}`}>
                     <div>
                       <span className="font-bold text-gray-800">{log.date}</span>
@@ -1148,117 +1252,6 @@ export default function App() {
                 ))
               )}
             </div>
-          </div>
-        </div>
-
-
-        {/* Input Form บัญชีหลัก (ซ่อนถ้าไม่ใช่ Admin) */}
-        {isAdmin && (
-          <div id="record-form" className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in duration-500">
-            <h2 className="text-base md:text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-              {editingId ? <Edit2 className="w-5 h-5 text-yellow-500" /> : <PlusCircle className="w-5 h-5 text-blue-500" />}
-              {editingId ? 'แก้ไขรายการบัญชี' : 'บันทึกรายการบัญชีกองกลาง'}
-            </h2>
-            
-            <form onSubmit={handleSubmit} className="space-y-4 md:space-y-5">
-              <div className="grid grid-cols-2 gap-3 md:gap-4">
-                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'income' } })} className={`py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 ${formData.type === 'income' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                  <PlusCircle className="w-5 h-5" /> รายรับ
-                </button>
-                <button type="button" onClick={() => handleInputChange({ target: { name: 'type', value: 'expense' } })} className={`py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 ${formData.type === 'expense' ? 'bg-red-500 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                  <MinusCircle className="w-5 h-5" /> รายจ่าย
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท)*</label>
-                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="0.00" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่*</label>
-                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
-                    <option value="" disabled>-- เลือกหมวดหมู่ --</option>
-                    {categories[formData.type].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">วันที่*</label>
-                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
-                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="ระบุเพิ่มเติม..." />
-                </div>
-                
-                {/* ระบบแนบสลิป */}
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">แนบสลิป/ใบเสร็จ (ไม่เกิน 5MB)</label>
-                  <div className="flex items-center gap-3">
-                    <label className={`flex items-center justify-center ${isUploading ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50 hover:bg-gray-100 cursor-pointer'} text-gray-600 border border-gray-300 border-dashed rounded-xl p-3.5 transition-all duration-200 w-full sm:w-auto active:scale-[0.98]`}>
-                       <Camera className="w-5 h-5 mr-2" />
-                       <span className="text-sm font-medium">{isUploading ? 'กำลังอัปโหลด...' : (receiptPreview ? 'เปลี่ยนรูป' : 'อัปโหลดรูปภาพ')}</span>
-                       <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={isUploading} />
-                    </label>
-                    {receiptPreview && (
-                       <div className="relative animate-in zoom-in duration-200">
-                          <img src={receiptPreview} alt="preview" className="h-14 w-14 object-cover rounded-xl border border-gray-200 shadow-sm cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setReceiptViewModal({ isOpen: true, url: receiptPreview })} />
-                          <button type="button" onClick={() => { setReceiptFile(null); setReceiptPreview(''); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-sm hover:bg-red-600 active:scale-90 transition-transform">
-                            <X className="w-3 h-3" />
-                          </button>
-                       </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <button type="submit" disabled={isUploading} className={`flex-1 ${isUploading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'} text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-[0.98] transition-all duration-200 shadow-md`}>
-                  {isUploading ? <span className="animate-pulse">กำลังบันทึก...</span> : <><Check className="w-5 h-5" /> {editingId ? 'บันทึกการแก้ไขบัญชี' : 'บันทึกลงบัญชี'}</>}
-                </button>
-                {editingId && (
-                  <button type="button" onClick={cancelEdit} disabled={isUploading} className="py-3.5 sm:px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-xl font-medium flex justify-center items-center active:scale-[0.98] transition-all duration-200 shadow-sm">ยกเลิกการแก้ไข</button>
-                )}
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 transition-all duration-300">
-          <div className="flex items-center gap-2 w-full md:w-auto text-gray-500 font-medium shrink-0">
-             <Filter className="w-5 h-5" /> ตัวกรอง:
-          </div>
-          <div className="grid grid-cols-2 md:flex gap-3 w-full items-center">
-            <div className="col-span-1 relative">
-              <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">เริ่มวันที่</span>
-              <input 
-                type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                className="w-full p-3 h-[52px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
-              />
-            </div>
-            <div className="col-span-1 relative">
-              <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">ถึงวันที่</span>
-              <input 
-                type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                className="w-full p-3 h-[52px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
-              />
-            </div>
-            <select 
-              value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
-              className="col-span-2 md:w-48 p-3 h-[52px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
-            >
-              <option value="">ทุกหมวดหมู่</option>
-              {[...categories.income, ...categories.expense].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
-            </select>
-            {(filterStartDate || filterEndDate || filterCategory) && (
-              <button 
-                onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategory(''); }} 
-                className="col-span-2 md:w-auto h-[52px] px-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-sm font-medium transition-all active:scale-95 flex items-center justify-center gap-1 border border-red-100"
-              >
-                <X className="w-4 h-4"/> ล้างค่า
-              </button>
-            )}
           </div>
         </div>
 
@@ -1603,9 +1596,7 @@ export default function App() {
           </div>
       </AnimatedModal>
 
-      {/* ==================================================== */}
       {/* NEW: Modal จัดการสูตรคำนวณต้นทุน (Admin) */}
-      {/* ==================================================== */}
       <AnimatedModal isOpen={costFormModal.isOpen} onClose={() => setCostFormModal(prev => ({ ...prev, isOpen: false }))} maxWidth="max-w-2xl" pClass="p-0">
          <div className="p-4 border-b border-teal-100 flex justify-between items-center bg-teal-50/50 rounded-t-3xl shrink-0">
              <h3 className="text-lg font-bold flex items-center gap-2 text-teal-800">
@@ -1622,7 +1613,7 @@ export default function App() {
                        <label className="block text-sm font-bold text-gray-700 mb-1">ชื่อสูตรต้นทุน</label>
                        <input 
                          type="text" required value={costForm.name} onChange={e => handleCostFieldChange('name', e.target.value)}
-                         className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
+                         className="w-full p-3 h-[52px] border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
                          placeholder="เช่น เมนูไก่ทอดชีส 5 ชิ้น"
                        />
                     </div>
@@ -1631,7 +1622,7 @@ export default function App() {
                        <div className="flex gap-2">
                            <input 
                              type="number" min="1" step="any" required value={costForm.yieldPieces} onChange={e => handleCostFieldChange('yieldPieces', e.target.value)}
-                             className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm text-center font-bold text-teal-700"
+                             className="w-full p-3 h-[52px] border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm text-center font-bold text-teal-700"
                              placeholder="25"
                            />
                            <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 flex items-center justify-center text-sm font-medium text-gray-600">ชิ้น</div>
@@ -1658,17 +1649,17 @@ export default function App() {
                           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                              <div className="md:col-span-4">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ชื่อวัตถุดิบ</label>
-                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ไก่สด, ผงหมัก"/>
+                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ไก่สด, ผงหมัก"/>
                              </div>
                              <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ราคาที่ซื้อมา (฿)</label>
-                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="฿"/>
+                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="฿"/>
                              </div>
                              <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ปริมาณที่ได้</label>
                                 <div className="flex gap-1">
-                                    <input type="number" required min="0.01" step="any" value={ing.qtyBought} onChange={e => handleCostIngredientChange(ing.id, 'qtyBought', e.target.value)} className="w-2/3 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 text-center" placeholder="จำนวน"/>
-                                    <input type="text" value={ing.unit} onChange={e => handleCostIngredientChange(ing.id, 'unit', e.target.value)} className="w-1/3 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white text-center" placeholder="หน่วย"/>
+                                    <input type="number" required min="0.01" step="any" value={ing.qtyBought} onChange={e => handleCostIngredientChange(ing.id, 'qtyBought', e.target.value)} className="w-2/3 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 text-center" placeholder="จำนวน"/>
+                                    <input type="text" value={ing.unit} onChange={e => handleCostIngredientChange(ing.id, 'unit', e.target.value)} className="w-1/3 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white text-center" placeholder="หน่วย"/>
                                 </div>
                              </div>
                              <div className="md:col-span-2 text-right pb-2 hidden md:block">
@@ -1681,15 +1672,15 @@ export default function App() {
                              <div className="md:col-span-7 mt-1 md:mt-0">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ปริมาณที่ใช้</label>
                                 <div className="flex gap-2">
-                                    <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-1/2 p-2.5 border border-teal-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-teal-50/30 text-teal-700 font-bold text-center" placeholder="จำนวนที่ใช้"/>
-                                    <select value={ing.usageType} onChange={e => handleCostIngredientChange(ing.id, 'usageType', e.target.value)} className="w-1/2 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white">
+                                    <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-1/2 p-2.5 h-[42px] border border-teal-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-teal-50/30 text-teal-700 font-bold text-center" placeholder="จำนวนที่ใช้"/>
+                                    <select value={ing.usageType} onChange={e => handleCostIngredientChange(ing.id, 'usageType', e.target.value)} className="w-1/2 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white">
                                         <option value="per_recipe">ต่อ {costForm.yieldPieces || 'X'} ชิ้น (สูตรรวม)</option>
                                         <option value="per_piece">ต่อ 1 ชิ้น</option>
                                     </select>
                                 </div>
                              </div>
                              
-                             <div className="md:col-span-5 flex flex-col justify-end text-right bg-gray-50 rounded-lg p-2 border border-gray-100 mt-2 md:mt-0 h-full">
+                             <div className="md:col-span-5 flex flex-col justify-end text-right bg-gray-50 rounded-lg p-2 border border-gray-100 mt-2 md:mt-0 h-[52px]">
                                 <span className="text-[10px] text-gray-500 block mb-0.5">ต้นทุนเฉพาะชิ้นนี้ =</span>
                                 <span className="font-bold text-teal-600 text-sm">
                                    ฿{calcIngCostPerPiece(ing, costForm.yieldPieces).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}
@@ -1713,19 +1704,19 @@ export default function App() {
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-in fade-in duration-300">
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">กำลังไฟ (วัตต์)</label>
-                             <input type="number" min="0" value={costForm.electricity.watts} onChange={e => handleCostElectChange('watts', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 1200"/>
+                             <input type="number" min="0" value={costForm.electricity.watts} onChange={e => handleCostElectChange('watts', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 1200"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">ค่าไฟ (บาท/หน่วย)</label>
-                             <input type="number" min="0" step="any" value={costForm.electricity.unitPrice} onChange={e => handleCostElectChange('unitPrice', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 5"/>
+                             <input type="number" min="0" step="any" value={costForm.electricity.unitPrice} onChange={e => handleCostElectChange('unitPrice', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 5"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">เวลาทอด (นาที)</label>
-                             <input type="number" min="0" value={costForm.electricity.minutes} onChange={e => handleCostElectChange('minutes', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 20"/>
+                             <input type="number" min="0" value={costForm.electricity.minutes} onChange={e => handleCostElectChange('minutes', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 20"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">ทอดได้กี่ชิ้น/รอบ?</label>
-                             <input type="number" min="1" value={costForm.electricity.piecesPerBatch} onChange={e => handleCostElectChange('piecesPerBatch', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 15"/>
+                             <input type="number" min="1" value={costForm.electricity.piecesPerBatch} onChange={e => handleCostElectChange('piecesPerBatch', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 15"/>
                           </div>
                        </div>
                     )}
@@ -1737,15 +1728,15 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">1 กล่อง ใส่กี่ชิ้น?</label>
-                           <input type="number" min="1" required value={costForm.boxConfig.piecesPerBox} onChange={e => handleCostBoxChange('piecesPerBox', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-700 text-center" placeholder="เช่น 5"/>
+                           <input type="number" min="1" required value={costForm.boxConfig.piecesPerBox} onChange={e => handleCostBoxChange('piecesPerBox', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-700 text-center" placeholder="เช่น 5"/>
                         </div>
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">ค่ากล่อง/ซอส/แพ็คเกจ (฿)</label>
-                           <input type="number" min="0" step="any" value={costForm.boxConfig.packagingCost} onChange={e => handleCostBoxChange('packagingCost', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
+                           <input type="number" min="0" step="any" value={costForm.boxConfig.packagingCost} onChange={e => handleCostBoxChange('packagingCost', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
                         </div>
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">ค่าแรงแพ็ค (฿/กล่อง)</label>
-                           <input type="number" min="0" step="any" value={costForm.boxConfig.laborCost} onChange={e => handleCostBoxChange('laborCost', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
+                           <input type="number" min="0" step="any" value={costForm.boxConfig.laborCost} onChange={e => handleCostBoxChange('laborCost', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
                         </div>
                     </div>
                  </div>
