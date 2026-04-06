@@ -121,8 +121,7 @@ export default function App() {
   
   // Edit & Filter State
   const [editingId, setEditingId] = useState(null);
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
 
   // Partner & Wage Calculation State
@@ -806,16 +805,9 @@ export default function App() {
   // Computations
   // ==========================================
   const filteredRecords = records.filter(record => {
-    let matchDate = true;
-    if (filterStartDate && filterEndDate) {
-      matchDate = record.date >= filterStartDate && record.date <= filterEndDate;
-    } else if (filterStartDate) {
-      matchDate = record.date >= filterStartDate;
-    } else if (filterEndDate) {
-      matchDate = record.date <= filterEndDate;
-    }
+    const matchMonth = filterMonth ? record.date.startsWith(filterMonth) : true;
     const matchCategory = filterCategory ? record.category === filterCategory : true;
-    return matchDate && matchCategory;
+    return matchMonth && matchCategory;
   });
 
   const totals = filteredRecords.reduce((acc, curr) => {
@@ -1225,40 +1217,22 @@ export default function App() {
         )}
 
         {/* Filters */}
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 bg-white p-4 rounded-2xl shadow-sm border border-gray-200 transition-all duration-300">
-          <div className="flex items-center gap-2 w-full md:w-auto text-gray-500 font-medium shrink-0">
+        <div className="flex flex-col sm:flex-row items-center gap-2 bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-200 transition-all duration-300">
+          <div className="flex items-center gap-2 w-full sm:w-auto text-gray-500 font-medium">
              <Filter className="w-5 h-5" /> ตัวกรอง:
           </div>
-          <div className="grid grid-cols-2 md:flex gap-3 w-full items-center">
-            <div className="col-span-1 relative">
-              <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">เริ่มวันที่</span>
-              <input 
-                type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                className="w-full p-3 h-[52px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
-              />
-            </div>
-            <div className="col-span-1 relative">
-              <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">ถึงวันที่</span>
-              <input 
-                type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                className="w-full p-3 h-[52px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
-              />
-            </div>
+          <div className="flex gap-2 w-full">
+            <input 
+              type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
+              className="p-3 h-[52px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 w-full bg-white text-gray-900 transition-all duration-200"
+            />
             <select 
               value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
-              className="col-span-2 md:w-48 p-3 h-[52px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
+              className="p-3 h-[52px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 w-full bg-white text-gray-900 transition-all duration-200"
             >
               <option value="">ทุกหมวดหมู่</option>
               {[...categories.income, ...categories.expense].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
             </select>
-            {(filterStartDate || filterEndDate || filterCategory) && (
-              <button 
-                onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategory(''); }} 
-                className="col-span-2 md:w-auto h-[52px] px-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-sm font-medium transition-all active:scale-95 flex items-center justify-center gap-1 border border-red-100"
-              >
-                <X className="w-4 h-4"/> ล้างค่า
-              </button>
-            )}
           </div>
         </div>
 
