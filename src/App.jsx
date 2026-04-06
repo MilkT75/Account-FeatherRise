@@ -11,7 +11,7 @@ import {
   X, Check, Filter, Users, UserPlus, Banknote, Settings,
   LogOut, Lock, Calculator, ChefHat, ShoppingBag, History,
   Undo, Redo, ChevronDown, ChevronUp, Info, Truck, Camera, Image as ImageIcon,
-  PieChart, ClipboardList, Plus, Zap, Box, RefreshCw
+  PieChart, ClipboardList, Plus, Zap, Box, RefreshCw, TrendingUp
 } from 'lucide-react';
 
 // ==========================================
@@ -83,7 +83,75 @@ const AnimatedModal = ({ isOpen, onClose, children, maxWidth = "max-w-sm", origi
 };
 
 // ==========================================
-// 3. Main Component
+// 3. Custom Line Chart Component (SVG)
+// ==========================================
+const ProfitChart = ({ data }) => {
+  if (!data || data.length === 0) return <div className="flex h-full items-center justify-center text-gray-400 text-sm font-medium">ไม่พบข้อมูลสำหรับสร้างกราฟในช่วงเวลานี้</div>;
+
+  const minNet = Math.min(...data.map(d => d.cumulative), 0);
+  const maxNet = Math.max(...data.map(d => d.cumulative), 100); 
+  const padding = 30;
+  const width = 800;
+  const height = 240;
+
+  const getX = (index) => padding + (index * (width - padding * 2) / Math.max(data.length - 1, 1));
+  const getY = (val) => height - padding - ((val - minNet) / (maxNet - minNet)) * (height - padding * 2);
+
+  const points = data.map((d, i) => `${getX(i)},${getY(d.cumulative)}`).join(' ');
+
+  return (
+    <div className="w-full h-full relative overflow-x-auto overflow-y-hidden">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full min-w-[500px] overflow-visible">
+        <defs>
+          <linearGradient id="lineGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        
+        {/* Base Line (0) */}
+        <line x1={padding} y1={getY(0)} x2={width-padding} y2={getY(0)} stroke="#d1d5db" strokeWidth="1" strokeDasharray="4 4" />
+
+        {/* Fill Area */}
+        {data.length > 1 && (
+           <polygon points={`${padding},${height-padding} ${points} ${getX(data.length-1)},${height-padding}`} fill="url(#lineGradient)" />
+        )}
+
+        {/* Line */}
+        {data.length > 1 ? (
+           <polyline points={points} fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        ) : (
+           <circle cx={getX(0)} cy={getY(data[0].cumulative)} r="4" fill="#3b82f6" />
+        )}
+
+        {/* Interactive Points & Tooltips */}
+        {data.map((d, i) => (
+          <g key={i} className="group cursor-pointer">
+            {/* Hitbox ใหญ่ขึ้นให้แตะง่าย */}
+            <circle cx={getX(i)} cy={getY(d.cumulative)} r="15" fill="transparent" />
+            <circle cx={getX(i)} cy={getY(d.cumulative)} r="4" fill="#ffffff" stroke="#3b82f6" strokeWidth="2" className="transition-all group-hover:r-5 group-hover:fill-blue-500" />
+            
+            {/* Tooltip โชว์ตัวเลขตอน Hover */}
+            <g className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+              <rect x={getX(i) - 45} y={getY(d.cumulative) - 40} width="90" height="24" rx="6" fill="#1e293b" />
+              <text x={getX(i)} y={getY(d.cumulative) - 24} textAnchor="middle" className="text-[11px] fill-white font-bold">
+                ฿{d.cumulative.toLocaleString(undefined, {maximumFractionDigits: 0})}
+              </text>
+            </g>
+
+            {/* Label วันที่ข้างล่าง */}
+            <text x={getX(i)} y={height - 5} textAnchor="middle" className="text-[10px] fill-gray-400 font-medium">
+              {d.displayDate}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  )
+};
+
+// ==========================================
+// 4. Main Component
 // ==========================================
 export default function App() {
   const [user, setUser] = useState(null);
@@ -103,6 +171,7 @@ export default function App() {
   const [isMainHistoryOpen, setIsMainHistoryOpen] = useState(true);
   const [isWageHistoryOpen, setIsWageHistoryOpen] = useState(true);
   const [isCostSectionOpen, setIsCostSectionOpen] = useState(false);
+  const [isChartOpen, setIsChartOpen] = useState(true); // สถานะเปิดปิดกราฟ
 
   const [formData, setFormData] = useState({
     type: 'income', amount: '', category: '', date: new Date().toISOString().split('T')[0], note: ''
@@ -147,7 +216,6 @@ export default function App() {
   });
   const [costDetailsModal, setCostDetailsModal] = useState({ isOpen: false, profile: null });
 
-  // แก้ไขให้กลับมาใช้ชื่อ categories (ตัวปัญหาที่ทำให้เกิด Blank Screen)
   const categories = {
     income: ['ขายสินค้า', 'เงินปันผล', 'รายรับอื่นๆ'],
     expense: ['ค่าแรง', 'ค่าจัดส่ง', 'ค่าวัตถุดิบ', 'ค่าเช่าที่', 'การตลาด', 'รายจ่ายอื่นๆ']
@@ -465,7 +533,7 @@ export default function App() {
   };
 
   // ==========================================
-  // Advanced Wage Calculation
+  // Advanced Wage Calculation (ทำไก่/ขายไก่)
   // ==========================================
   const handleSaveWageSettings = async (e) => {
     e.preventDefault();
@@ -769,6 +837,32 @@ export default function App() {
   const netProfitLoss = balance - Number(shopCapital || 0) - displayPendingWages;
   const dividendPerPerson = partners.length > 0 ? (netProfitLoss / partners.length) : 0;
 
+  // ข้อมูลสำหรับกราฟผลประกอบการ
+  const getChartData = () => {
+     const chartDataMap = {};
+     // รวบรวมรายรับ-รายจ่ายรายวัน จาก Filtered Records
+     filteredRecords.forEach(r => {
+        if (!chartDataMap[r.date]) chartDataMap[r.date] = { date: r.date, income: 0, expense: 0 };
+        if (r.type === 'income') chartDataMap[r.date].income += Number(r.amount);
+        if (r.type === 'expense') chartDataMap[r.date].expense += Number(r.amount);
+     });
+
+     const sortedChartData = Object.values(chartDataMap).sort((a, b) => a.date.localeCompare(b.date));
+     let runningCumulative = 0;
+     
+     return sortedChartData.map(d => {
+        const net = d.income - d.expense;
+        runningCumulative += net;
+        return {
+           ...d,
+           net,
+           cumulative: runningCumulative,
+           displayDate: new Date(d.date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+        };
+     });
+  };
+  const chartData = getChartData();
+
   const getPartnerStatement = (partner) => {
       if (!partner) return [];
       let stmts = [];
@@ -890,6 +984,25 @@ export default function App() {
           </div>
         </div>
 
+        {/* ==================================================== */}
+        {/* NEW: กราฟผลประกอบการ (Stock Line Chart) */}
+        {/* ==================================================== */}
+        <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden transition-all duration-300 mt-2">
+          <button onClick={() => setIsChartOpen(!isChartOpen)} className="w-full p-4 bg-blue-50/40 hover:bg-blue-50/80 border-b border-blue-50 flex justify-between items-center transition-colors duration-200">
+            <div className="flex items-center gap-2">
+               <TrendingUp className="w-5 h-5 text-blue-500" />
+               <h3 className="font-semibold text-blue-800">กราฟแนวโน้มกำไรสะสมสุทธิ</h3>
+            </div>
+            <div className="flex items-center gap-2">
+               <ChevronDown className={`w-5 h-5 text-blue-400 transition-transform duration-300 ease-out ${isChartOpen ? 'rotate-180' : ''}`} />
+            </div>
+          </button>
+          
+          <div className={`overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] ${isChartOpen ? 'h-[240px] opacity-100' : 'h-0 opacity-0'}`}>
+             <ProfitChart data={chartData} />
+          </div>
+        </div>
+
         {/* ระบบ Face Card ID หุ้นส่วน / จ่ายค่าแรง */}
         <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-200 transition-all duration-300">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
@@ -994,11 +1107,11 @@ export default function App() {
                   <div className="flex gap-2">
                      <div className="w-1/2 relative">
                         <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-orange-600 z-10">วันที่</span>
-                        <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
+                        <input type="date" value={wageForm.date} onChange={e => setWageForm({...wageForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white transition-all duration-200" />
                      </div>
                      <div className="w-1/2 relative">
                         <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-orange-600 z-10">จำนวนกล่อง</span>
-                        <input type="number" min="0" placeholder="0" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-full p-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
+                        <input type="number" min="0" placeholder="0" value={wageForm.boxes} onChange={e => setWageForm({...wageForm, boxes: e.target.value})} className="w-full p-3 h-[52px] appearance-none text-left block border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm bg-white font-bold text-orange-600 transition-all duration-200" />
                      </div>
                   </div>
                   <div className="flex gap-2">
@@ -1033,14 +1146,14 @@ export default function App() {
                   <div className="flex gap-2">
                      <div className="w-1/2 relative">
                         <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-purple-600 z-10">วันที่</span>
-                        <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
+                        <input type="date" value={deliveryForm.date} onChange={e => setDeliveryForm({...deliveryForm, date: e.target.value})} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white transition-all duration-200" />
                      </div>
                      <div className="w-1/2 relative">
                         <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-purple-600 z-10">จำนวนรอบรวม</span>
-                        <input type="number" min="0" placeholder="0" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-full p-3 border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
+                        <input type="number" min="0" placeholder="0" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-full p-3 h-[52px] appearance-none text-left block border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
                      </div>
                   </div>
-                  <button type="button" onClick={() => setDeliverySelectModal(true)} className={`w-full p-3 border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                  <button type="button" onClick={() => setDeliverySelectModal({ isOpen: true })} className={`w-full p-3 h-[52px] border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
                     <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
                     <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
                   </button>
@@ -1075,22 +1188,23 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                 <div className="relative">
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">จำนวนเงิน (บาท)*</span>
-                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="0.00" />
+                  <input type="number" name="amount" min="0" step="any" value={formData.amount} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="0.00" />
                 </div>
                 <div className="relative">
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">หมวดหมู่*</span>
-                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
+                  <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
                     <option value="" disabled>-- เลือกหมวดหมู่ --</option>
-                    {categories[formData.type].map(cat => ( <option key={cat} value={cat}>{cat}</option> ))}
+                    {categoriesList.income.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    {categoriesList.expense.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                 </div>
                 <div className="relative">
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">วันที่*</span>
-                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" />
+                  <input type="date" name="date" value={formData.date} onChange={handleInputChange} onClick={(e) => { try { e.target.showPicker() } catch(err){} }} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" />
                 </div>
                 <div className="relative">
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">หมายเหตุ</span>
-                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="ระบุเพิ่มเติม..." />
+                  <input type="text" name="note" value={formData.note} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200" placeholder="ระบุเพิ่มเติม..." />
                 </div>
                 
                 {/* ระบบแนบสลิป */}
@@ -1133,14 +1247,14 @@ export default function App() {
               <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">เริ่มวันที่</span>
               <input 
                 type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                className="w-full p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
+                className="w-full p-3 h-[46px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
               />
             </div>
             <div className="flex flex-col flex-1 relative">
               <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">ถึงวันที่</span>
               <input 
                 type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} onClick={(e) => { try { e.target.showPicker() } catch(err){} }}
-                className="w-full p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
+                className="w-full p-3 h-[46px] appearance-none text-left block text-sm border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 transition-all duration-200"
               />
             </div>
           </div>
@@ -1149,7 +1263,7 @@ export default function App() {
             <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">หมวดหมู่ (เลือกได้หลายอัน)</span>
             <button 
               onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
-              className="w-full p-3 min-h-[48px] border border-gray-300 rounded-xl text-left text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none flex justify-between items-center transition-all shadow-sm"
+              className="w-full p-3 h-[46px] border border-gray-300 rounded-xl text-left text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none flex justify-between items-center transition-all shadow-sm"
             >
               <span className="truncate pr-2">{filterCategories.length === 0 ? 'ทุกหมวดหมู่' : filterCategories.join(', ')}</span>
               <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
@@ -1182,7 +1296,7 @@ export default function App() {
              <span className="text-xs font-semibold text-gray-500 mb-1.5 ml-1">ซิงค์ค่าแรงตามตัวกรอง</span>
              <button 
                 onClick={() => setSyncWageFilter(!syncWageFilter)}
-                className={`w-full sm:w-auto px-4 min-h-[48px] border rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] shadow-sm ${syncWageFilter ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+                className={`w-full sm:w-auto px-4 h-[46px] border rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-200 active:scale-[0.97] shadow-sm ${syncWageFilter ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}
              >
                 <RefreshCw className={`w-4 h-4 ${syncWageFilter ? 'animate-spin-slow' : ''}`} /> {syncWageFilter ? 'เปิดซิงค์แล้ว' : 'ปิดซิงค์ (ดูยอดปัจจุบัน)'}
              </button>
@@ -1192,7 +1306,7 @@ export default function App() {
              <div className="flex flex-col w-full sm:w-auto mt-2 md:mt-0 md:ml-auto">
                <button 
                  onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategories([]); setSyncWageFilter(false); }} 
-                 className="w-full sm:w-auto min-h-[48px] px-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1 border border-red-100"
+                 className="w-full sm:w-auto h-[46px] px-4 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl text-sm font-bold transition-all active:scale-95 flex items-center justify-center gap-1 border border-red-100"
                >
                  <X className="w-4 h-4"/> ล้างตัวกรอง
                </button>
@@ -1431,7 +1545,7 @@ export default function App() {
                   type={partnerModal.mode === 'add' ? 'text' : 'number'}
                   step={partnerModal.mode === 'add' ? undefined : 'any'} min="0"
                   value={partnerModal.value} onChange={(e) => setPartnerModal({...partnerModal, value: e.target.value})}
-                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
+                  className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                   placeholder={partnerModal.mode === 'add' ? 'ชื่อบุคคล' : '0.00'} autoFocus
                 />
               </div>
@@ -1454,7 +1568,7 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ค่าแรงทำไก่ (บาท/กล่อง)</label>
                 <input type="number" step="any" min="0" required
                   value={wageSettingsModal.prepRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, prepRate: e.target.value})}
-                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
+                  className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                   placeholder="0.00" autoFocus
                 />
               </div>
@@ -1462,7 +1576,7 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ค่าแรงขายไก่ (บาท/กล่อง)</label>
                 <input type="number" step="any" min="0" required
                   value={wageSettingsModal.sellRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, sellRate: e.target.value})}
-                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
+                  className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                   placeholder="0.00"
                 />
               </div>
@@ -1470,7 +1584,7 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ค่าจัดส่ง (บาท/รอบ)</label>
                 <input type="number" step="any" min="0" required
                   value={wageSettingsModal.deliveryRate} onChange={(e) => setWageSettingsModal({...wageSettingsModal, deliveryRate: e.target.value})}
-                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
+                  className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50 text-gray-900 transition-all duration-200"
                   placeholder="0.00"
                 />
               </div>
@@ -1527,7 +1641,7 @@ export default function App() {
                          type="number" min="0" step="1" placeholder="0"
                          value={currentTrips || ''}
                          onChange={(e) => handleDeliveryTripChange(p.id, e.target.value)}
-                         className="w-16 p-2 text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold text-purple-600 bg-white transition-all appearance-none"
+                         className="w-16 p-2 h-[40px] text-center border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm font-bold text-purple-600 bg-white transition-all appearance-none"
                        />
                        <span className="text-xs text-gray-500 w-6">รอบ</span>
                     </div>
@@ -1612,7 +1726,7 @@ export default function App() {
                        <label className="block text-sm font-bold text-gray-700 mb-1">ชื่อสูตรต้นทุน</label>
                        <input 
                          type="text" required value={costForm.name} onChange={e => handleCostFieldChange('name', e.target.value)}
-                         className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
+                         className="w-full p-3 h-[52px] border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm"
                          placeholder="เช่น เมนูไก่ทอดชีส 5 ชิ้น"
                        />
                     </div>
@@ -1621,7 +1735,7 @@ export default function App() {
                        <div className="flex gap-2">
                            <input 
                              type="number" min="1" step="any" required value={costForm.yieldPieces} onChange={e => handleCostFieldChange('yieldPieces', e.target.value)}
-                             className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm text-center font-bold text-teal-700"
+                             className="w-full p-3 h-[52px] border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white text-gray-900 transition-all shadow-sm text-center font-bold text-teal-700"
                              placeholder="25"
                            />
                            <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 flex items-center justify-center text-sm font-medium text-gray-600">ชิ้น</div>
@@ -1648,17 +1762,17 @@ export default function App() {
                           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                              <div className="md:col-span-4">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ชื่อวัตถุดิบ</label>
-                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ไก่สด, ผงหมัก"/>
+                                <input type="text" required value={ing.name} onChange={e => handleCostIngredientChange(ing.id, 'name', e.target.value)} className="w-full p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="เช่น ไก่สด, ผงหมัก"/>
                              </div>
                              <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ราคาที่ซื้อมา (฿)</label>
-                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="฿"/>
+                                <input type="number" required min="0" step="any" value={ing.price} onChange={e => handleCostIngredientChange(ing.id, 'price', e.target.value)} className="w-full p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50" placeholder="฿"/>
                              </div>
                              <div className="md:col-span-3">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ปริมาณที่ได้</label>
                                 <div className="flex gap-1">
-                                    <input type="number" required min="0.01" step="any" value={ing.qtyBought} onChange={e => handleCostIngredientChange(ing.id, 'qtyBought', e.target.value)} className="w-2/3 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 text-center" placeholder="จำนวน"/>
-                                    <input type="text" value={ing.unit} onChange={e => handleCostIngredientChange(ing.id, 'unit', e.target.value)} className="w-1/3 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white text-center" placeholder="หน่วย"/>
+                                    <input type="number" required min="0.01" step="any" value={ing.qtyBought} onChange={e => handleCostIngredientChange(ing.id, 'qtyBought', e.target.value)} className="w-2/3 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-gray-50 text-center" placeholder="จำนวน"/>
+                                    <input type="text" value={ing.unit} onChange={e => handleCostIngredientChange(ing.id, 'unit', e.target.value)} className="w-1/3 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white text-center" placeholder="หน่วย"/>
                                 </div>
                              </div>
                              <div className="md:col-span-2 text-right pb-2 hidden md:block">
@@ -1671,15 +1785,15 @@ export default function App() {
                              <div className="md:col-span-7 mt-1 md:mt-0">
                                 <label className="block text-xs font-semibold text-gray-500 mb-1">ปริมาณที่ใช้</label>
                                 <div className="flex gap-2">
-                                    <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-1/2 p-2.5 border border-teal-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-teal-50/30 text-teal-700 font-bold text-center" placeholder="จำนวนที่ใช้"/>
-                                    <select value={ing.usageType} onChange={e => handleCostIngredientChange(ing.id, 'usageType', e.target.value)} className="w-1/2 p-2.5 border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white">
+                                    <input type="number" required min="0" step="any" value={ing.usage} onChange={e => handleCostIngredientChange(ing.id, 'usage', e.target.value)} className="w-1/2 p-2.5 h-[42px] border border-teal-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-teal-50/30 text-teal-700 font-bold text-center" placeholder="จำนวนที่ใช้"/>
+                                    <select value={ing.usageType} onChange={e => handleCostIngredientChange(ing.id, 'usageType', e.target.value)} className="w-1/2 p-2.5 h-[42px] border border-gray-200 rounded-lg focus:ring-1 focus:ring-teal-500 outline-none text-sm bg-white">
                                         <option value="per_recipe">ต่อ {costForm.yieldPieces || 'X'} ชิ้น (สูตรรวม)</option>
                                         <option value="per_piece">ต่อ 1 ชิ้น</option>
                                     </select>
                                 </div>
                              </div>
                              
-                             <div className="md:col-span-5 flex flex-col justify-end text-right bg-gray-50 rounded-lg p-2 border border-gray-100 mt-2 md:mt-0 h-[42px]">
+                             <div className="md:col-span-5 flex flex-col justify-end text-right bg-gray-50 rounded-lg p-2 border border-gray-100 mt-2 md:mt-0 h-[52px]">
                                 <span className="text-[10px] text-gray-500 block mb-0.5">ต้นทุนเฉพาะชิ้นนี้ =</span>
                                 <span className="font-bold text-teal-600 text-sm">
                                    ฿{calcIngCostPerPiece(ing, costForm.yieldPieces).toLocaleString(undefined, {minimumFractionDigits:3, maximumFractionDigits:3})}
@@ -1703,19 +1817,19 @@ export default function App() {
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-in fade-in duration-300">
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">กำลังไฟ (วัตต์)</label>
-                             <input type="number" min="0" value={costForm.electricity.watts} onChange={e => handleCostElectChange('watts', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 1200"/>
+                             <input type="number" min="0" value={costForm.electricity.watts} onChange={e => handleCostElectChange('watts', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 1200"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">ค่าไฟ (บาท/หน่วย)</label>
-                             <input type="number" min="0" step="any" value={costForm.electricity.unitPrice} onChange={e => handleCostElectChange('unitPrice', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 5"/>
+                             <input type="number" min="0" step="any" value={costForm.electricity.unitPrice} onChange={e => handleCostElectChange('unitPrice', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 5"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">เวลาทอด (นาที)</label>
-                             <input type="number" min="0" value={costForm.electricity.minutes} onChange={e => handleCostElectChange('minutes', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 20"/>
+                             <input type="number" min="0" value={costForm.electricity.minutes} onChange={e => handleCostElectChange('minutes', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 20"/>
                           </div>
                           <div>
                              <label className="block text-xs font-semibold text-gray-500 mb-1">ทอดได้กี่ชิ้น/รอบ?</label>
-                             <input type="number" min="1" value={costForm.electricity.piecesPerBatch} onChange={e => handleCostElectChange('piecesPerBatch', e.target.value)} className="w-full p-2.5 border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 15"/>
+                             <input type="number" min="1" value={costForm.electricity.piecesPerBatch} onChange={e => handleCostElectChange('piecesPerBatch', e.target.value)} className="w-full p-2.5 h-[42px] border border-orange-200 rounded-lg focus:ring-1 focus:ring-orange-500 outline-none text-sm bg-white" placeholder="เช่น 15"/>
                           </div>
                        </div>
                     )}
@@ -1727,15 +1841,15 @@ export default function App() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">1 กล่อง ใส่กี่ชิ้น?</label>
-                           <input type="number" min="1" required value={costForm.boxConfig.piecesPerBox} onChange={e => handleCostBoxChange('piecesPerBox', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-700 text-center" placeholder="เช่น 5"/>
+                           <input type="number" min="1" required value={costForm.boxConfig.piecesPerBox} onChange={e => handleCostBoxChange('piecesPerBox', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-700 text-center" placeholder="เช่น 5"/>
                         </div>
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">ค่ากล่อง/ซอส/แพ็คเกจ (฿)</label>
-                           <input type="number" min="0" step="any" value={costForm.boxConfig.packagingCost} onChange={e => handleCostBoxChange('packagingCost', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
+                           <input type="number" min="0" step="any" value={costForm.boxConfig.packagingCost} onChange={e => handleCostBoxChange('packagingCost', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
                         </div>
                         <div>
                            <label className="block text-xs font-semibold text-gray-500 mb-1">ค่าแรงแพ็ค (฿/กล่อง)</label>
-                           <input type="number" min="0" step="any" value={costForm.boxConfig.laborCost} onChange={e => handleCostBoxChange('laborCost', e.target.value)} className="w-full p-2.5 border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
+                           <input type="number" min="0" step="any" value={costForm.boxConfig.laborCost} onChange={e => handleCostBoxChange('laborCost', e.target.value)} className="w-full p-2.5 h-[42px] border border-purple-200 rounded-lg focus:ring-1 focus:ring-purple-500 outline-none text-sm bg-white" placeholder="0.00"/>
                         </div>
                     </div>
                  </div>
