@@ -840,7 +840,6 @@ export default function App() {
   // ข้อมูลสำหรับกราฟผลประกอบการ
   const getChartData = () => {
      const chartDataMap = {};
-     // รวบรวมรายรับ-รายจ่ายรายวัน จาก Filtered Records
      filteredRecords.forEach(r => {
         if (!chartDataMap[r.date]) chartDataMap[r.date] = { date: r.date, income: 0, expense: 0 };
         if (r.type === 'income') chartDataMap[r.date].income += Number(r.amount);
@@ -1115,11 +1114,11 @@ export default function App() {
                      </div>
                   </div>
                   <div className="flex gap-2">
-                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-2 min-h-[52px] border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'prep' })} className={`w-1/2 p-3 border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.prepPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-white border-orange-200 text-gray-500 hover:bg-orange-50'}`}>
                        <span className="flex items-center gap-1"><ChefHat className="w-3.5 h-3.5"/> ทำไก่</span>
                        <span className="font-bold">{wageForm.prepPartners.length} คน</span>
                      </button>
-                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-2 min-h-[52px] border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                     <button type="button" onClick={() => setPartnerSelectModal({ isOpen: true, type: 'sell' })} className={`w-1/2 p-3 border rounded-xl text-sm flex flex-col items-center justify-center active:scale-[0.97] transition-all duration-200 shadow-sm ${wageForm.sellPartners.length > 0 ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-white border-orange-200 text-gray-500 hover:bg-orange-50'}`}>
                        <span className="flex items-center gap-1"><ShoppingBag className="w-3.5 h-3.5"/> ขายไก่</span>
                        <span className="font-bold">{wageForm.sellPartners.length} คน</span>
                      </button>
@@ -1153,7 +1152,7 @@ export default function App() {
                         <input type="number" min="0" placeholder="0" value={deliveryForm.totalTrips} onChange={e => setDeliveryForm({...deliveryForm, totalTrips: e.target.value})} className="w-full p-3 border border-purple-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm bg-white font-bold text-purple-600 transition-all duration-200" />
                      </div>
                   </div>
-                  <button type="button" onClick={() => setDeliverySelectModal({ isOpen: true })} className={`w-full p-3 border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-gray-50 border-gray-300 text-gray-500 hover:bg-gray-100'}`}>
+                  <button type="button" onClick={() => setDeliverySelectModal({ isOpen: true })} className={`w-full p-4 border rounded-xl text-sm flex items-center justify-between active:scale-[0.98] transition-all duration-200 shadow-sm ${Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0) > 0 ? 'bg-purple-100 border-purple-300 text-purple-800' : 'bg-white border-purple-200 text-gray-500 hover:bg-purple-50'}`}>
                     <span className="flex items-center gap-1"><Users className="w-4 h-4"/> เลือกคนส่งของ</span>
                     <span className="font-bold">{Object.values(deliveryForm.tripsByPartner).reduce((a,b)=>a+b,0)} / {deliveryForm.totalTrips || 0} รอบ</span>
                   </button>
@@ -1194,8 +1193,8 @@ export default function App() {
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">หมวดหมู่*</span>
                   <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
                     <option value="" disabled>-- เลือกหมวดหมู่ --</option>
-                    {categoriesList.income.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    {categoriesList.expense.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    {categories.income.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    {categories.expense.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                 </div>
                 <div className="relative">
