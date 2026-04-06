@@ -957,14 +957,14 @@ export default function App() {
                     <div className="w-full flex flex-col gap-2 mt-1">
                         <button 
                           onClick={() => setPartnerModal({ isOpen: true, mode: 'setWage', data: partner, value: partner.pendingWage || '' })}
-                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-xl text-xs font-medium hover:bg-gray-50 active:scale-[0.97] transition-all duration-200 shadow-sm"
+                          className="flex items-center justify-center gap-1.5 w-full bg-white text-gray-600 border border-gray-200 py-1.5 rounded-md text-xs font-medium hover:bg-gray-50 active:scale-[0.97] transition-all duration-200 shadow-sm"
                         >
                           <Settings className="w-3.5 h-3.5" /> ตั้งยอดค่าแรง
                         </button>
                         <button 
                           onClick={() => handlePayWage(partner)}
                           disabled={!partner.pendingWage || partner.pendingWage <= 0}
-                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-xl text-xs font-bold hover:bg-blue-600 hover:text-white active:scale-[0.97] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
+                          className="flex items-center justify-center gap-1.5 w-full bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded-md text-xs font-bold hover:bg-blue-600 hover:text-white active:scale-[0.97] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 shadow-sm"
                         >
                           <Banknote className="w-4 h-4" /> จ่ายเงินตัดบัญชี
                         </button>
