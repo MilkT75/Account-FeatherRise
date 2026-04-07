@@ -127,11 +127,9 @@ const ProfitChart = ({ data }) => {
         {/* Interactive Points & Tooltips */}
         {data.map((d, i) => (
           <g key={i} className="group cursor-pointer">
-            {/* Hitbox ใหญ่ขึ้นให้แตะง่าย */}
             <circle cx={getX(i)} cy={getY(d.cumulative)} r="15" fill="transparent" />
             <circle cx={getX(i)} cy={getY(d.cumulative)} r="4" fill="#ffffff" stroke="#3b82f6" strokeWidth="2" className="transition-all group-hover:r-5 group-hover:fill-blue-500" />
             
-            {/* Tooltip โชว์ตัวเลขตอน Hover */}
             <g className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
               <rect x={getX(i) - 45} y={getY(d.cumulative) - 40} width="90" height="24" rx="6" fill="#1e293b" />
               <text x={getX(i)} y={getY(d.cumulative) - 24} textAnchor="middle" className="text-[11px] fill-white font-bold">
@@ -139,7 +137,6 @@ const ProfitChart = ({ data }) => {
               </text>
             </g>
 
-            {/* Label วันที่ข้างล่าง */}
             <text x={getX(i)} y={height - 5} textAnchor="middle" className="text-[10px] fill-gray-400 font-medium">
               {d.displayDate}
             </text>
@@ -208,7 +205,7 @@ export default function App() {
   });
   const [deliverySelectModal, setDeliverySelectModal] = useState({ isOpen: false });
 
-  // Elec Wage Form (NEW)
+  // Elec Wage Form
   const [elecForm, setElecForm] = useState({
     date: new Date().toISOString().split('T')[0], startMeter: '', endMeter: '', unitPrice: '', providerId: ''
   });
@@ -678,7 +675,7 @@ export default function App() {
          recordAction({ type: 'batch', items: undoItems });
 
          setDeliveryForm({ date: new Date().toISOString().split('T')[0], totalTrips: '', tripsByPartner: {} });
-         setDeliverySelectModal({ isOpen: false });
+         setDeliverySelectModal(false);
      } catch (err) { alert('เกิดข้อผิดพลาด: ' + err.message); }
   };
 
@@ -1318,8 +1315,8 @@ export default function App() {
                   <span className="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-semibold text-gray-500 z-10">หมวดหมู่*</span>
                   <select name="category" value={formData.category} onChange={handleInputChange} className="w-full p-3 h-[52px] appearance-none text-left block border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-gray-900 shadow-sm transition-all duration-200">
                     <option value="" disabled>-- เลือกหมวดหมู่ --</option>
-                    {categoriesList.income.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    {categoriesList.expense.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    {categories.income.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    {categories.expense.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                 </div>
                 <div className="relative">
